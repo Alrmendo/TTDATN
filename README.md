@@ -1,156 +1,146 @@
-# RetailChain Backend
+# TTDATN — Retail Chain Management System
 
-Backend cho hệ thống quản lý chuỗi cửa hàng — xây dựng bằng **Node.js + Express + TypeScript + Sequelize (PostgreSQL)**.
-
-> Tham chiếu schema database đầy đủ tại [`schema.md`](../schema.md) ở root project. Mọi model phải khớp với tài liệu này.
+Hệ thống quản lý chuỗi bán lẻ (Tổ Chức Bán Lẻ Chuỗi) — Node.js/Express/TypeScript backend + React/Vite/TypeScript frontend.
 
 ---
 
-## Yêu cầu môi trường
+## Tech Stack
 
-- **Node.js** >= 18
-- **PostgreSQL** >= 14 (đã cài và đang chạy)
-- npm
-
----
-
-## Cài đặt lần đầu
-
-### 1. Clone & cài dependencies
-
-```bash
-git clone <repo-url>
-cd backend
-npm install
-```
-
-### 2. Tạo database PostgreSQL
-
-Mở `psql` hoặc pgAdmin, tạo database mới:
-
-```sql
-CREATE DATABASE retailchain;
-```
-
-### 3. Tạo file `.env`
-
-Copy từ `.env.example`:
-
-```bash
-copy .env.example .env
-```
-
-(Mac/Linux dùng `cp .env.example .env`)
-
-Mở `.env` và điền thông tin thật của bạn:
-
-```
-PORT=5000
-DATABASE_URL=postgresql://postgres:<your_password>@localhost:5432/retailchain
-JWT_SECRET=<chuỗi bí mật tùy ý, ví dụ: retailchain_secret_2026>
-```
-
-> Thay `<your_password>` bằng password PostgreSQL trên máy bạn. `JWT_SECRET` có thể đặt tùy ý nhưng **nên giống nhau giữa các thành viên** trong môi trường dev để JWT issue từ máy này verify được trên máy khác (nếu cần test chung).
-
-### 4. Chạy server
-
-```bash
-npm run dev
-```
-
-Nếu thành công sẽ thấy:
-
-```
-✅ PostgreSQL connected successfully
-✅ Database synced
-🚀 Server running on port 5000
-```
-
-Sequelize sẽ **tự động tạo bảng** trong database theo các model đã định nghĩa trong `src/models/`.
-
----
-
-## Cấu trúc thư mục
-
-```
-backend/
-├── src/
-│   ├── config/        # Kết nối database, biến cấu hình
-│   ├── controllers/    # Logic xử lý request cho từng route
-│   ├── middleware/      # authMiddleware, roleMiddleware, error handler...
-│   ├── models/         # Định nghĩa model Sequelize (1 file / 1 bảng)
-│   ├── routes/         # Định nghĩa endpoint, map tới controller
-│   └── server.ts       # Entry point — khởi tạo Express, kết nối DB
-├── .env                 # Biến môi trường thật (KHÔNG push lên git)
-├── .env.example         # Mẫu biến môi trường (push lên git)
-├── .gitignore
-├── package.json
-├── tsconfig.json
-└── README.md
-```
-
----
-
-## Quy ước khi thêm code mới
-
-### Thêm model mới
-
-1. Tạo file `src/models/xxx.model.ts`, đặt tên bảng (`tableName`) đúng theo [`schema.md`](../schema.md) — **snake_case, số nhiều** (vd: `purchase_orders`).
-2. Import model vào `src/models/index.ts`, khai báo association (quan hệ) tại đây — **không định nghĩa association rải rác ở nhiều file**.
-3. Tên cột dùng `camelCase` để khớp JSON response cho frontend.
-
-### Thêm route mới
-
-1. Tạo controller trong `src/controllers/xxx.controller.ts`
-2. Tạo route trong `src/routes/xxx.routes.ts`, áp `authMiddleware` + `roleMiddleware` nếu cần
-3. Mount route vào `src/server.ts`:
-   ```typescript
-   import xxxRoutes from './routes/xxx.routes';
-   app.use('/api/xxx', xxxRoutes);
-   ```
-
-### Method dùng chung — KHÔNG viết lại riêng
-
-| Method | File | Dùng cho |
-|---|---|---|
-| `InventoryService.updateInventory(storeId, productId, quantity, mode)` | `src/services/inventory.service.ts` | Bán hàng (giảm), Nhập hàng (tăng), Điều chuyển hàng |
-| `authMiddleware` | `src/middleware/auth.middleware.ts` | Tất cả route cần đăng nhập |
-| `roleMiddleware(allowedRoles)` | `src/middleware/role.middleware.ts` | Tất cả route cần phân quyền theo role |
-
-Chi tiết signature xem trong [`schema.md`](../schema.md) phần "Method signatures dùng chung".
-
----
-
-## Scripts
-
-| Lệnh | Mô tả |
+| Layer | Technology |
 |---|---|
-| `npm run dev` | Chạy server ở môi trường dev (auto-reload bằng nodemon) |
-| `npm run build` | Compile TypeScript sang `dist/` |
-| `npm start` | Chạy bản đã build (production) |
+| Backend | Node.js, Express 5, TypeScript, Sequelize 6 |
+| Database | PostgreSQL |
+| Auth | JWT (jsonwebtoken), bcrypt |
+| Frontend | React 18, Vite, TypeScript, Tailwind CSS |
 
 ---
 
-## Lưu ý khi pull code của người khác
+## Project Structure
 
-Sau khi `git pull`, nếu có model mới được thêm:
-
-```bash
-npm install        # nếu có package mới
-npm run dev        # Sequelize tự sync bảng mới vào DB local của bạn
+```
+TTDATN/
+├── backend/          # Express API server (port 5000)
+│   └── src/
+│       ├── config/       # Sequelize + PostgreSQL connection
+│       ├── models/       # Sequelize models
+│       ├── controllers/  # Route handlers
+│       ├── services/     # Business logic (pending)
+│       ├── middleware/   # JWT auth + role guard
+│       ├── routes/       # Express routers
+│       ├── types/        # express.d.ts — extends req.user
+│       └── seed.ts       # Database seeder
+├── frontend/         # React/Vite SPA (port 3000)
+│   └── src/
+│       ├── components/   # One file per business domain
+│       ├── utils/        # roleMapping helpers
+│       ├── types.ts      # Shared TypeScript interfaces
+│       └── data.ts       # Mock data (used by non-migrated components)
+└── Schema.md         # Single source of truth for database schema
 ```
 
-Nếu gặp lỗi liên quan đến association/foreign key khi sync, kiểm tra lại `src/models/index.ts` xem các bảng liên quan (`storeId`, `productId`...) đã được tạo trước chưa — Sequelize cần bảng tham chiếu tồn tại trước khi tạo FK.
+---
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+
+- PostgreSQL running on `localhost:5432`
+- Database `ttdatn_db` created
+
+### 1. Backend setup
+```bash
+cd backend
+cp .env.example .env          # fill in DATABASE_URL and JWT_SECRET
+npm install
+npm run seed                  # seed test data (idempotent)
+npm run dev                   # starts on port 5000
+```
+
+### 2. Frontend setup
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev                   # starts on port 3000
+```
+
+### 3. Login
+| Role | Email | Password |
+|---|---|---|
+| Manager | `manager@test.com` | `password123` |
 
 ---
 
-## Troubleshooting
+## Implemented — Backend
 
-**Lỗi `The "url" argument must be of type string. Received undefined`**
-→ File `.env` chưa tồn tại hoặc `DATABASE_URL` chưa điền. Kiểm tra file `.env` ở root `backend/` (không phải trong `src/`).
+### Models (Sequelize + PostgreSQL)
 
-**Lỗi kết nối PostgreSQL (`ECONNREFUSED`)**
-→ PostgreSQL chưa chạy, hoặc sai port/user/password trong `DATABASE_URL`.
+| Model | Table | Key details |
+|---|---|---|
+| `User` | `users` | ENUM role (`Manager`/`Staff`/`WarehouseStaff`), bcrypt password, `isActive` soft-delete |
+| `Store` | `stores` | `isActive` soft-delete |
+| `Category` | `categories` | FK target for products |
+| `Product` | `products` | `sku` UNIQUE; **no `quantity` column** — stock lives in `inventory` |
+| `Inventory` | `inventory` | UNIQUE(`storeId`, `productId`); `adjustQuantity(delta)` instance method with negative-stock guard |
+| `Customer` | `customers` | `phone` UNIQUE |
+| `Invoice` | `invoices` | status ENUM (`draft`/`completed`/`cancelled`), payment info embedded; `promotionId` is plain UUID pending `promotions` model |
+| `InvoiceDetail` | `invoice_details` | price snapshot at time of sale |
 
-**`injected env (0) from .env`**
-→ File `.env` rỗng hoặc đặt sai vị trí. Phải nằm cùng cấp với `package.json`.
+### Associations
+- `User` N:1 `Store`
+- `Product` N:1 `Category`
+- `Inventory` N:1 `Store`, N:1 `Product`
+- `Invoice` N:1 `Store`, N:1 `User` (as `staff`), N:1 `Customer`
+- `InvoiceDetail` N:1 `Invoice`, N:1 `Product`
+
+### Middleware
+- `authMiddleware` — verifies Bearer JWT, attaches `req.user: { userId, role, storeId }`
+- `roleMiddleware(allowedRoles[])` — guards routes by role
+
+### API Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/login` | — | Email + password → JWT token |
+| `GET` | `/api/accounts` | Manager | List all user accounts (search + filter) |
+| `POST` | `/api/accounts` | Manager | Create new user account |
+| `PUT` | `/api/accounts/:id` | Manager | Update account (name, store, salary, isActive) |
+| `GET` | `/api/stores` | Auth | List active stores |
+
+### Seeded Data (`npm run seed`)
+- 1 Manager: `manager@test.com` / `password123`
+- 3 Stores: Chi nhánh Quận 1, Quận 7, Bình Thạnh
+- 1 Category: Đồ uống
+- 3 Products: SP001 Coca Cola 330ml, SP002 Bánh mì sandwich, SP003 Nước suối Lavie 500ml
+- Inventory: 100 units × 3 products at Chi nhánh Quận 1
+- 1 Customer: Lê Thị Khách (0909999999)
+
+---
+
+## Implemented — Frontend
+
+| Component | Status | Notes |
+|---|---|---|
+| Login screen | ✅ Connected | Calls `POST /api/auth/login`; stores JWT in localStorage |
+| `AccountManagement` | ✅ Connected | Fetches accounts + stores; create/edit/toggle via API |
+| `ProductManagement` | 🔄 Mock data | Pending backend routes |
+| `SalesManagement` | 🔄 Mock data | Pending backend routes |
+| `WarehouseManagement` | 🔄 Mock data | Pending backend routes |
+| `CustomerManagement` | 🔄 Mock data | Pending backend routes |
+| `PromotionManagement` | 🔄 Mock data | Pending backend routes |
+| `StoreManagement` | 🔄 Mock data | Pending backend routes |
+| `DashboardOverview` | 🔄 Mock data | Pending backend routes |
+| `ReportView` | 🔄 Mock data | Pending backend routes |
+
+---
+
+## Pending Implementation
+
+**Backend:**
+- `InventoryService.updateInventory(storeId, productId, quantity, mode)` — shared entry point for all stock changes
+- `OrderService` — createOrder, addItem, applyPromotion, confirmPayment
+- Routes + controllers: Products, Inventory, Customers, Invoices
+- Missing models: `suppliers`, `purchase_orders`, `purchase_order_details`, `stock_transfers`, `loyalty_points`, `promotions`
+
+**Frontend:**
+- Migrate remaining components from mock data to real API calls
