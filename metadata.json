@@ -1,0 +1,6 @@
+{
+  "name": "RetailChain",
+  "description": "Hệ thống Quản lý Chuỗi Bán lẻ (Retail Chain Management System) dành cho doanh nghiệp Việt Nam.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
