@@ -17,6 +17,9 @@ app.use('/api/auth', authRoutes);
 import accountRoutes from './routes/account.routes';
 app.use('/api/accounts', accountRoutes);
 
+import storeRoutes from './routes/store.routes';
+app.use('/api/stores', storeRoutes);
+
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
