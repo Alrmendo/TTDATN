@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { 
   Mail, 
   Lock, 
@@ -30,7 +30,8 @@ import {
   Shield
 } from 'lucide-react';
 
-import { Product, Employee, Customer, Invoice, Promotion, Store, PurchaseOrder } from './types';
+import { Product, Employee, AuthUser, Customer, Invoice, Promotion, Store, PurchaseOrder } from './types';
+import { roleLabels, defaultTabByRole } from './utils/roleMapping';
 import { 
   initialProducts, 
   initialEmployees, 
@@ -65,7 +66,7 @@ export default function App() {
   
   // App States for mock databases
   const [userRole, setUserRole] = useState<'Quản lý' | 'Nhân viên bán hàng' | 'Nhân viên kho' | ''>('');
-  const [currentUser, setCurrentUser] = useState<Employee | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
@@ -84,47 +85,66 @@ export default function App() {
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [lastInvoiceId, setLastInvoiceId] = useState('');
 
-  const handleLogin = (e: FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      setIsSubmitting(false);
-      const lowerEmail = email.toLowerCase().trim();
-      const pw = password.trim();
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password: password.trim() }),
+      });
 
-      if (lowerEmail === 'manager@retailchain.vn' && pw === '123456') {
-        const matchingStaff = employees.find(emp => emp.email === lowerEmail) || null;
-        setCurrentUser(matchingStaff);
-        setUserRole('Quản lý');
-        setIsSuccess(true);
-        setActiveTab('Tổng quan');
-      } else if (lowerEmail === 'staff@retailchain.vn' && pw === '123456') {
-        const matchingStaff = employees.find(emp => emp.email === lowerEmail) || null;
-        setCurrentUser(matchingStaff);
-        setUserRole('Nhân viên bán hàng');
-        setIsSuccess(true);
-        setActiveTab('Bán hàng');
-      } else if (lowerEmail === 'warehouse@retailchain.vn' && pw === '123456') {
-        const matchingStaff = employees.find(emp => emp.email === lowerEmail) || null;
-        setCurrentUser(matchingStaff);
-        setUserRole('Nhân viên kho');
-        setIsSuccess(true);
-        setActiveTab('Tồn kho');
-      } else {
-        setError('Email hoặc mật khẩu không chính xác');
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.message || 'Đã có lỗi xảy ra. Vui lòng thử lại.');
+        return;
       }
-    }, 600);
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+
+      const user = data.user as AuthUser;
+      setCurrentUser(user);
+      setUserRole(roleLabels[user.role]);
+      setIsSuccess(true);
+      setActiveTab(defaultTabByRole[user.role]);
+    } catch {
+      setError('Không thể kết nối đến server. Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDemoFill = (roleEmail: string) => {
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const userStr = localStorage.getItem('user');
+    if (token && userStr) {
+      try {
+        const user = JSON.parse(userStr) as AuthUser;
+        setCurrentUser(user);
+        setUserRole(roleLabels[user.role]);
+        setActiveTab(defaultTabByRole[user.role]);
+        setIsSuccess(true);
+      } catch {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
+    }
+  }, []);
+
+  const handleDemoFill = (roleEmail: string, pw = 'password123') => {
     setEmail(roleEmail);
-    setPassword('123456');
+    setPassword(pw);
     setError('');
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setIsSuccess(false);
     setUserRole('');
     setCurrentUser(null);
@@ -224,7 +244,7 @@ export default function App() {
     const newInvoice: Invoice = {
       invoiceId,
       staffId: currentUser?.id || 'NV002',
-      staffName: currentUser?.name || 'Vãng lai',
+      staffName: currentUser?.fullName || 'Vãng lai',
       customerId: selectedCustomer?.id,
       customerName: selectedCustomer?.name || 'Khách vãng lai',
       totalAmount: finalAmount,
@@ -396,24 +416,10 @@ export default function App() {
               <div className="grid grid-cols-1 gap-2">
                 <button
                   type="button"
-                  onClick={() => handleDemoFill('manager@retailchain.vn')}
+                  onClick={() => handleDemoFill('manager@test.com')}
                   className="text-left w-full px-3 py-2 rounded-lg hover:bg-blue-50/50 text-xs font-medium text-gray-600 border border-gray-200 hover:border-blue-200 transition"
                 >
-                  Quản lý: <span className="text-[#3B82F6] font-bold font-mono">manager@retailchain.vn</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDemoFill('staff@retailchain.vn')}
-                  className="text-left w-full px-3 py-2 rounded-lg hover:bg-blue-50/50 text-xs font-medium text-gray-600 border border-gray-200 hover:border-blue-200 transition"
-                >
-                  Nhân viên POS: <span className="text-[#3B82F6] font-bold font-mono">staff@retailchain.vn</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDemoFill('warehouse@retailchain.vn')}
-                  className="text-left w-full px-3 py-2 rounded-lg hover:bg-blue-50/50 text-xs font-medium text-gray-600 border border-gray-200 hover:border-blue-200 transition"
-                >
-                  Nhân viên kho: <span className="text-[#3B82F6] font-bold font-mono">warehouse@retailchain.vn</span>
+                  Quản lý: <span className="text-[#3B82F6] font-bold font-mono">manager@test.com</span>
                 </button>
               </div>
             </div>
@@ -578,13 +584,13 @@ export default function App() {
               {/* User Info details */}
               <div className="flex items-center space-x-4 text-xs">
                 <div className="text-right hidden sm:block">
-                  <span className="block font-bold text-gray-900">{currentUser?.name || 'Nguyễn Văn A'}</span>
+                  <span className="block font-bold text-gray-900">{currentUser?.fullName || 'Nguyễn Văn A'}</span>
                   <span className="block text-[10px] text-gray-400 font-medium font-mono">
-                    {currentUser?.id || 'NV001'} &bull; {currentUser?.role || 'Quản lý'}
+                    {currentUser?.id || 'NV001'} &bull; {userRole || 'Quản lý'}
                   </span>
                 </div>
                 <div className="w-9 h-9 rounded-full bg-blue-100 text-[#3B82F6] flex items-center justify-center font-bold tracking-tight">
-                  {currentUser?.name ? currentUser.name.split(' ').slice(-1)[0][0] : 'Q'}
+                  {currentUser?.fullName ? currentUser.fullName.split(' ').slice(-1)[0][0] : 'Q'}
                 </div>
 
                 <button

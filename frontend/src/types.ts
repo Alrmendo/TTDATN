@@ -79,3 +79,11 @@ export interface PurchaseOrder {
   totalCost: number;
   date: string;
 }
+
+export interface AuthUser {
+  id: string;
+  fullName: string;
+  email: string;
+  role: 'Manager' | 'Staff' | 'WarehouseStaff';
+  storeId: string | null;
+}

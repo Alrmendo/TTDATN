@@ -200,7 +200,7 @@ export default function SalesManagement({
       const savedInvoice: Invoice = {
         invoiceId: newInvoiceId,
         staffId: currentUser?.id || 'NV002',
-        staffName: currentUser?.name || 'Nguyễn Văn B',
+        staffName: currentUser?.fullName || 'Nguyễn Văn B',
         customerId: selectedCust?.id,
         customerName: selectedCust?.name || 'Khách vãng lai',
         totalAmount,
@@ -328,7 +328,7 @@ export default function SalesManagement({
                   <ShoppingCart className="w-4 h-4 mr-2 text-[#3B82F6]" />
                   Chi tiết giỏ hàng ({cart.length} món)
                 </span>
-                <span className="text-[10px] text-gray-400 font-medium font-mono">Nhân viên: {currentUser?.name || 'Vãng lai'}</span>
+                <span className="text-[10px] text-gray-400 font-medium font-mono">Nhân viên: {currentUser?.fullName || 'Vãng lai'}</span>
               </div>
 
               {/* Product search bar */}
