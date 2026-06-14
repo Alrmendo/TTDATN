@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "seed": "ts-node src/seed.ts"
   },
   "keywords": [],
   "author": "",
@@ -23,8 +24,10 @@
     "sequelize": "^6.37.8"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.9.3",
     "nodemon": "^3.1.14",
     "sequelize-cli": "^6.6.5",

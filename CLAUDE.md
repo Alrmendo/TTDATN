@@ -61,6 +61,28 @@ Full schema with design rationale is in `Schema.md`. Key decisions:
 
 14 tables: `users`, `stores`, `categories`, `products`, `inventory`, `suppliers`, `purchase_orders`, `purchase_order_details`, `stock_transfers`, `customers`, `loyalty_points`, `promotions`, `invoices`, `invoice_details`
 
+## Git Workflow
+
+Commit work to Git after every meaningful unit of progress (a model implemented, a route wired up, a bug fixed). Never batch unrelated changes into one commit.
+
+**Commit format:**
+```
+type: short imperative description (under 72 chars)
+```
+Use types: `feat`, `fix`, `refactor`, `docs`, `chore`. Examples:
+- `feat: add Product and Category Sequelize models`
+- `fix: correct JWT expiry handling in auth middleware`
+- `chore: install bcrypt and jsonwebtoken dependencies`
+
+**Push only when the user explicitly asks.** The remote is `https://github.com/Alrmendo/TTDATN.git` on branch `main`.
+
+Always run from the repo root (`C:\Users\Admin\Documents\TTDATN`):
+```bash
+git add <specific files>   # never use git add -A blindly
+git commit -m "type: description"
+git push origin main       # only when user says to push
+```
+
 ## What Needs to Be Built
 
 The backend is a skeleton. To complete it:

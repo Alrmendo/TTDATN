@@ -79,3 +79,31 @@ export interface PurchaseOrder {
   totalCost: number;
   date: string;
 }
+
+export interface ApiAccount {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  role: 'Manager' | 'Staff' | 'WarehouseStaff';
+  storeId: string | null;
+  salary: number | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiStore {
+  id: string;
+  storeName: string;
+  address: string;
+  phone: string | null;
+}
+
+export interface AuthUser {
+  id: string;
+  fullName: string;
+  email: string;
+  role: 'Manager' | 'Staff' | 'WarehouseStaff';
+  storeId: string | null;
+}
