@@ -21,8 +21,8 @@ export class Inventory extends Model {
 Inventory.init(
   {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    storeId: { type: DataTypes.UUID, allowNull: false },
-    productId: { type: DataTypes.UUID, allowNull: false },
+    storeId: { type: DataTypes.UUID, allowNull: false, references: { model: 'stores', key: 'id' } },
+    productId: { type: DataTypes.UUID, allowNull: false, references: { model: 'products', key: 'id' } },
     quantity: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     lowStockThreshold: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 10 },
     lastUpdated: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
