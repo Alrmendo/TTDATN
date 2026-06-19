@@ -69,7 +69,7 @@ export class InventoryService {
       const delta = mode === 'increase' ? quantity : -quantity;
 
       try {
-        await record.adjustQuantity(delta);
+        await record.adjustQuantity(delta, t);
       } catch (err) {
         // Inventory.adjustQuantity throw Error('Tồn kho không đủ') khi < 0
         throw new InventoryServiceError(

@@ -45,7 +45,7 @@ Promotion.hasMany(Invoice, { foreignKey: 'promotionId' });
 
 // --- Loyalty Points ---
 LoyaltyPoint.belongsTo(Customer, { foreignKey: 'customerId' });
-Customer.hasOne(LoyaltyPoint, { foreignKey: 'customerId' });
+Customer.hasOne(LoyaltyPoint, { foreignKey: 'customerId', as: 'loyaltyPoints' });
 
 export const syncDatabase = async () => {
   await sequelize.sync({ alter: true });
