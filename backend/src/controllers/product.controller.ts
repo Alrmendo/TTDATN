@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Op } from 'sequelize';
+import { Op, fn, col, where as sequelizeWhere } from 'sequelize';
 import { Product, Category } from '../models';
 
 export const searchProducts = async (req: Request, res: Response): Promise<void> => {
@@ -9,9 +9,15 @@ export const searchProducts = async (req: Request, res: Response): Promise<void>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = { isActive: true };
     if (q) {
-      where[Op.or] = [
-        { productName: { [Op.iLike]: `%${q}%` } },
-        { sku: { [Op.iLike]: `%${q}%` } },
+      // unaccent() để tìm không phân biệt dấu tiếng Việt (vd "banh" khớp "Bánh")
+      const pattern = `%${q}%`;
+      where[Op.and] = [
+        {
+          [Op.or]: [
+            sequelizeWhere(fn('unaccent', col('productName')), { [Op.iLike]: fn('unaccent', pattern) }),
+            sequelizeWhere(fn('unaccent', col('sku')), { [Op.iLike]: fn('unaccent', pattern) }),
+          ],
+        },
       ];
     }
 

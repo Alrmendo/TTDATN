@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Op } from 'sequelize';
+import { Op, fn, col } from 'sequelize';
 import { sequelize } from '../config/database';
 import { OrderService } from '../services/OrderService';
 import { Invoice, InvoiceDetail, Customer, User, Promotion, Product } from '../models';
@@ -83,7 +83,11 @@ export const getInvoices = async (req: Request, res: Response): Promise<void> =>
     const { startDate, endDate, search } = req.query as Record<string, string | undefined>;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = {};
+    const where: any = {
+      // Lịch sử đơn hàng chỉ hiện đơn đã hoàn tất/đã hủy — bỏ qua các
+      // draft chưa thanh toán (mỗi lần mở màn Bán hàng tạo 1 draft mới).
+      status: { [Op.ne]: 'draft' },
+    };
 
     if (req.user!.role === 'Staff') {
       where.storeId = req.user!.storeId;
@@ -106,7 +110,9 @@ export const getInvoices = async (req: Request, res: Response): Promise<void> =>
             sequelize.where(sequelize.cast(sequelize.col('Invoice.id'), 'text'), {
               [Op.iLike]: `%${search}%`,
             }),
-            sequelize.where(sequelize.col('customer.fullName'), { [Op.iLike]: `%${search}%` }),
+            sequelize.where(fn('unaccent', col('customer.fullName')), {
+              [Op.iLike]: fn('unaccent', `%${search}%`),
+            }),
           ],
         },
       });

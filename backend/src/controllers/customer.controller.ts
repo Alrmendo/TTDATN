@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Op } from 'sequelize';
+import { Op, fn, col, where as sequelizeWhere } from 'sequelize';
 import { Customer, LoyaltyPoint } from '../models';
 
 export const searchCustomers = async (req: Request, res: Response): Promise<void> => {
@@ -9,8 +9,9 @@ export const searchCustomers = async (req: Request, res: Response): Promise<void
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = q
       ? {
+          // unaccent() để tìm không phân biệt dấu tiếng Việt
           [Op.or]: [
-            { fullName: { [Op.iLike]: `%${q}%` } },
+            sequelizeWhere(fn('unaccent', col('fullName')), { [Op.iLike]: fn('unaccent', `%${q}%`) }),
             { phone: { [Op.iLike]: `%${q}%` } },
           ],
         }
@@ -18,7 +19,7 @@ export const searchCustomers = async (req: Request, res: Response): Promise<void
 
     const customers = await Customer.findAll({
       where,
-      include: [{ model: LoyaltyPoint, attributes: ['points'], required: false }],
+      include: [{ model: LoyaltyPoint, as: 'loyaltyPoints', attributes: ['points'], required: false }],
       order: [['createdAt', 'DESC']],
     });
 

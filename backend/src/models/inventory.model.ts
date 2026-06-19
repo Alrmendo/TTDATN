@@ -1,4 +1,4 @@
-import { Model, DataTypes } from 'sequelize';
+import { Model, DataTypes, Transaction } from 'sequelize';
 import { sequelize } from '../config/database';
 
 export class Inventory extends Model {
@@ -9,12 +9,19 @@ export class Inventory extends Model {
   declare lowStockThreshold: number;
   declare lastUpdated: Date;
 
-  async adjustQuantity(delta: number): Promise<void> {
+  /**
+   * `transaction` MUST be passed through when the caller already holds a
+   * row lock on this record (e.g. InventoryService.updateInventory's
+   * `t.LOCK.UPDATE`) — otherwise this save() runs on a separate pooled
+   * connection and blocks forever waiting for the caller's own lock to
+   * release, deadlocking the request.
+   */
+  async adjustQuantity(delta: number, transaction?: Transaction): Promise<void> {
     const newQty = this.quantity + delta;
     if (newQty < 0) throw new Error('Tồn kho không đủ');
     this.quantity = newQty;
     this.lastUpdated = new Date();
-    await this.save();
+    await this.save({ transaction });
   }
 }
 
