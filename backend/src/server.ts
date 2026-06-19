@@ -20,6 +20,18 @@ app.use('/api/accounts', accountRoutes);
 import storeRoutes from './routes/store.routes';
 app.use('/api/stores', storeRoutes);
 
+import inventoryRoutes from './routes/inventory.routes';
+app.use('/api/inventory', inventoryRoutes);
+
+import orderRoutes from './routes/order.routes';
+app.use('/api/invoices', orderRoutes);
+
+import customerRoutes from './routes/customer.routes';
+app.use('/api/customers', customerRoutes);
+
+import productRoutes from './routes/product.routes';
+app.use('/api/products', productRoutes);
+
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {

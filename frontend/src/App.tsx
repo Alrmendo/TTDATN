@@ -50,8 +50,8 @@ import CustomerManagement from './components/CustomerManagement';
 import PromotionManagement from './components/PromotionManagement';
 import StoreManagement from './components/StoreManagement';
 import AccountManagement from './components/AccountManagement';
-import ReportView from './components/ReportView';
 import SalesManagement from './components/SalesManagement';
+import OrderHistory from './components/OrderHistory';
 import RevenueReport from './components/RevenueReport';
 import WarehouseManagement from './components/WarehouseManagement';
 
@@ -695,8 +695,8 @@ export default function App() {
                     />
                   )}
 
-                  {activeTab === 'Lịch sử đơn hàng' && (
-                    <ReportView invoices={invoices} />
+                  {activeTab === 'Lịch sử đơn hàng' && currentUser && (
+                    <OrderHistory currentUser={{ storeId: currentUser.storeId, role: currentUser.role }} />
                   )}
                 </>
               )}

@@ -16,7 +16,7 @@
 
 import { Transaction } from 'sequelize';
 import { sequelize } from '../config/database';
-import { Inventory } from '../models/Inventory';
+import { Inventory } from '../models/inventory.model';
 
 export type InventoryUpdateMode = 'increase' | 'decrease';
 

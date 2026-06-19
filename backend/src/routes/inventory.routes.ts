@@ -1,6 +1,6 @@
-// backend/src/routes/inventoryRoutes.ts
+// backend/src/routes/inventory.routes.ts
 //
-// Mount tại /api/inventory (xem app.ts / server.ts chính của dự án).
+// Mounted at /api/inventory (see server.ts).
 //
 // Phân quyền theo Schema.md:
 // - Xem tồn kho: bất kỳ ai đã đăng nhập (Manager, Staff, WarehouseStaff)
