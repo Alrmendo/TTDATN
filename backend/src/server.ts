@@ -32,6 +32,12 @@ app.use('/api/customers', customerRoutes);
 import productRoutes from './routes/product.routes';
 app.use('/api/products', productRoutes);
 
+import categoryRoutes from './routes/category.routes';
+app.use('/api/categories', categoryRoutes);
+
+import promotionRoutes from './routes/promotion.routes';
+app.use('/api/promotions', promotionRoutes);
+
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {

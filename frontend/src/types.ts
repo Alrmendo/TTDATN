@@ -2,10 +2,16 @@ export interface Product {
   productId: string;
   productName: string;
   category: string;
+  categoryId: string;
   price: number;
   cost: number;
   stock: number;
   status?: 'Đang kinh doanh' | 'Ngừng kinh doanh';
+}
+
+export interface Category {
+  id: string;
+  categoryName: string;
 }
 
 export interface Employee {
