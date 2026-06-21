@@ -86,7 +86,8 @@ export default function ProductManagement({ products, categories, onAddProduct, 
     onAddProduct({
       productId: newId,
       productName: name,
-      category: categoryId,
+      categoryId: categoryId,
+      category: categories.find(c => c.id === categoryId)?.categoryName ?? '',
       price: Number(price),
       cost: Number(cost),
       stock: Number(stock),
@@ -95,7 +96,7 @@ export default function ProductManagement({ products, categories, onAddProduct, 
 
     // Reset form
     setName('');
-    setCategory('Thực phẩm khô');
+    setCategoryId(categories[0]?.id ?? '');
     setPrice(0);
     setCost(0);
     setStock(0);
@@ -129,7 +130,8 @@ export default function ProductManagement({ products, categories, onAddProduct, 
       editingProductId,
       {
         productName: editName,
-        category: editCategoryId,
+        categoryId: editCategoryId,
+        category: categories.find(c => c.id === editCategoryId)?.categoryName ?? '',
         price: editPrice,
         cost: editCost,
       }

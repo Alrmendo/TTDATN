@@ -461,9 +461,9 @@ export default function PromotionManagement({
                         
                         {/* Edit Button */}
                         <button
-                          onClick={() => handleOpenEditPromoModal(p)}
-                          className="px-2 py-1 text-[10px] font-extrabold border border-gray-200 hover:border-[#3B82F6] hover:text-[#3B82F6] rounded bg-white text-gray-700 transition flex items-center space-x-0.5"
-                          title="Sửa chương trình"
+                          disabled
+                          className="px-2 py-1 text-[10px] font-extrabold border border-gray-200 rounded bg-white text-gray-300 cursor-not-allowed flex items-center space-x-0.5"
+                          title="Chức năng sửa khuyến mãi chưa được hỗ trợ — vui lòng vô hiệu hóa và tạo lại chương trình mới"
                         >
                           <Edit className="w-3 h-3" />
                           <span>Sửa</span>
