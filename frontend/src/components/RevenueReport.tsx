@@ -22,23 +22,39 @@ interface RevenueReportProps {
 }
 
 export default function RevenueReport({ invoices, products }: RevenueReportProps) {
+  // Mặc định: 7 ngày gần nhất tính đến hôm nay
+  const today = new Date();
+  const sevenDaysAgo = new Date(today);
+  sevenDaysAgo.setDate(today.getDate() - 6);
+  const toIsoDate = (d: Date) => d.toISOString().slice(0, 10);
+
   // Filter States
   const [reportType, setReportType] = useState<'Doanh thu' | 'Tồn kho'>('Doanh thu');
-  const [startDate, setStartDate] = useState('2026-05-14');
-  const [endDate, setEndDate] = useState('2026-05-20');
+  const [startDate, setStartDate] = useState(toIsoDate(sevenDaysAgo));
+  const [endDate, setEndDate] = useState(toIsoDate(today));
   const [selectedBranch, setSelectedBranch] = useState('Tất cả');
   
   // Interactive applied state (updates on "Xem báo cáo")
   const [appliedReportType, setAppliedReportType] = useState<'Doanh thu' | 'Tồn kho'>('Doanh thu');
-  const [appliedStartDate, setAppliedStartDate] = useState('2026-05-14');
-  const [appliedEndDate, setAppliedEndDate] = useState('2026-05-20');
+  const [appliedStartDate, setAppliedStartDate] = useState(toIsoDate(sevenDaysAgo));
+  const [appliedEndDate, setAppliedEndDate] = useState(toIsoDate(today));
   const [appliedBranch, setAppliedBranch] = useState('Tất cả');
+
+  // Lỗi validate khoảng thời gian (startDate > endDate)
+  const [dateRangeError, setDateRangeError] = useState<string | null>(null);
 
   // Chart hover state for inline interactive bar tooltips
   const [hoveredBarIndex, setHoveredBarIndex] = useState<number | null>(null);
 
   // Trigger Filter recalculation
   const handleQueryReport = () => {
+    // Validate: startDate <= endDate — khớp với rule "Khoảng thời gian không hợp lệ"
+    // của GET /reports/revenue ở backend.
+    if (startDate > endDate) {
+      setDateRangeError('Khoảng thời gian không hợp lệ');
+      return;
+    }
+    setDateRangeError(null);
     setAppliedReportType(reportType);
     setAppliedStartDate(startDate);
     setAppliedEndDate(endDate);
@@ -69,41 +85,32 @@ export default function RevenueReport({ invoices, products }: RevenueReportProps
   const totalOrdersCount = validInvoices.length;
   const averageOrderValue = totalOrdersCount > 0 ? totalRevenue / totalOrdersCount : 0;
 
-  // Group revenue by day for the interactive SVG chart range (2026-05-14 to 2026-05-20)
-  // Let's predefined a complete range of last 7 days
-  const dateLabels = [
-    { key: '2026-05-14', display: '14/05' },
-    { key: '2026-05-15', display: '15/05' },
-    { key: '2026-05-16', display: '16/05' },
-    { key: '2026-05-17', display: '17/05' },
-    { key: '2026-05-18', display: '18/05' },
-    { key: '2026-05-19', display: '19/05' },
-    { key: '2026-05-20', display: '20/05' },
-  ];
+  // Sinh danh sách ngày động trong khoảng [appliedStartDate, appliedEndDate]
+  // (thay cho dateLabels cứng 2026-05-14 → 2026-05-20 trước đây)
+  const dateLabels: { key: string; display: string }[] = [];
+  {
+    const cursor = new Date(appliedStartDate);
+    const end = new Date(appliedEndDate);
+    while (cursor <= end) {
+      const key = cursor.toISOString().slice(0, 10);
+      const [, m, d] = key.split('-');
+      dateLabels.push({ key, display: `${d}/${m}` });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
 
-  // Map true invoices or mock trend for date matches
+  // Group revenue theo ngày từ dữ liệu invoice THẬT — không còn mock fallback
   const dailyChartData = dateLabels.map(day => {
-    // true matches in invoice state
     const matchesVal = invoices
       .filter(i => i.status === 'Hoàn thành' && i.date.startsWith(day.key) && (appliedBranch === 'Tất cả' || i.storeName === appliedBranch))
       .reduce((sum, item) => sum + item.totalAmount, 0);
 
-    // If zero, we inject realistic base trend from our business metrics
-    let defaultAmount = matchesVal;
-    if (matchesVal === 0 && day.key >= appliedStartDate && day.key <= appliedEndDate) {
-      if (day.key === '2026-05-14') defaultAmount = 8400000;
-      if (day.key === '2026-05-15') defaultAmount = 9200000;
-      if (day.key === '2026-05-16') defaultAmount = 7600000;
-      if (day.key === '2026-05-17') defaultAmount = 11000000;
-      if (day.key === '2026-05-18') defaultAmount = 10500000;
-    }
-    
     return {
       date: day.display,
       fullDate: day.key,
-      revenue: defaultAmount,
+      revenue: matchesVal,
     };
-  }).filter(d => d.fullDate >= appliedStartDate && d.fullDate <= appliedEndDate);
+  });
 
   // 2. DATA CALCULATION FOR "TỒN KHO" REPORT (Alternative toggle view)
   const totalStockItems = products.reduce((sum, item) => sum + item.stock, 0);
@@ -122,28 +129,31 @@ export default function RevenueReport({ invoices, products }: RevenueReportProps
     };
   });
 
-  // Table below chart rows data (3 retail stores)
-  const originalStoresData = [
-    { storeName: 'Chi nhánh Quận 1', count: 48, revenue: 38500000 },
-    { storeName: 'Chi nhánh Thảo Điền', count: 32, revenue: 29800000 },
-    { storeName: 'Chi nhánh Bình Thạnh', count: 25, revenue: 18400000 },
-  ];
-
-  // Compute total of originalStoresData
-  const combinedMockRevenue = originalStoresData.reduce((sum, it) => sum + it.revenue, 0);
-
-  const formattedBranchesTable = originalStoresData.map(st => {
-    // If user filtered down to a single branch, only show that branch
-    if (appliedBranch !== 'Tất cả' && st.storeName !== appliedBranch) {
-      return null;
+  // Cơ cấu doanh thu theo chi nhánh — tính THẬT từ validInvoices (đã lọc theo
+  // ngày + trạng thái 'Hoàn thành' + chi nhánh đang chọn ở trên), không còn
+  // dữ liệu 3 chi nhánh hard-code.
+  const storeRevenueMap = new Map<string, { count: number; revenue: number }>();
+  for (const inv of validInvoices) {
+    const existing = storeRevenueMap.get(inv.storeName);
+    if (existing) {
+      existing.count += 1;
+      existing.revenue += inv.totalAmount;
+    } else {
+      storeRevenueMap.set(inv.storeName, { count: 1, revenue: inv.totalAmount });
     }
-    
-    const percentage = combinedMockRevenue > 0 ? (st.revenue / combinedMockRevenue) * 100 : 0;
-    return {
-      ...st,
-      percent: Math.round(percentage)
-    };
-  }).filter(Boolean);
+  }
+
+  const formattedBranchesTable = Array.from(storeRevenueMap.entries())
+    .map(([storeName, v]) => ({
+      storeName,
+      count: v.count,
+      revenue: v.revenue,
+      percent: totalRevenue > 0 ? Math.round((v.revenue / totalRevenue) * 100) : 0,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  // Danh sách chi nhánh — sinh động từ dữ liệu invoices thật (thay cho 3 tên hard-code)
+  const branchOptions = Array.from(new Set(invoices.map(i => i.storeName))).sort();
 
   const formatVND = (num: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
@@ -195,8 +205,6 @@ export default function RevenueReport({ invoices, products }: RevenueReportProps
               type="date"
               id="report-start-date"
               value={startDate}
-              min="2026-05-14"
-              max="2026-05-20"
               onChange={(e) => setStartDate(e.target.value)}
               className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono"
             />
@@ -205,12 +213,13 @@ export default function RevenueReport({ invoices, products }: RevenueReportProps
               type="date"
               id="report-end-date"
               value={endDate}
-              min="2026-05-14"
-              max="2026-05-20"
               onChange={(e) => setEndDate(e.target.value)}
               className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono"
             />
           </div>
+          {dateRangeError && (
+            <p className="text-[10px] text-red-600 font-bold mt-1">{dateRangeError}</p>
+          )}
         </div>
 
         {/* Dropdown "Chi nhánh" */}
@@ -223,9 +232,9 @@ export default function RevenueReport({ invoices, products }: RevenueReportProps
             className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold bg-white text-gray-900 focus:outline-none"
           >
             <option value="Tất cả">Tất cả chi nhánh</option>
-            <option value="Chi nhánh Quận 1">Chi nhánh Quận 1</option>
-            <option value="Chi nhánh Thảo Điền">Chi nhánh Thảo Điền</option>
-            <option value="Chi nhánh Bình Thạnh">Chi nhánh Bình Thạnh</option>
+            {branchOptions.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
           </select>
         </div>
 
@@ -258,10 +267,7 @@ export default function RevenueReport({ invoices, products }: RevenueReportProps
               </div>
               <div className="text-xs">
                 <span className="block text-gray-500 font-medium">Tổng doanh thu thực tế</span>
-                <span className="text-base font-black text-gray-950 font-mono mt-0.5 block">{formatVND(totalRevenue || 12285000)}</span>
-                <span className="text-[10px] text-emerald-600 font-black mt-1 flex items-center">
-                  <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +12% tăng trưởng so với tuần trước
-                </span>
+                <span className="text-base font-black text-gray-950 font-mono mt-0.5 block">{formatVND(totalRevenue)}</span>
               </div>
             </div>
 
@@ -272,8 +278,7 @@ export default function RevenueReport({ invoices, products }: RevenueReportProps
               </div>
               <div className="text-xs">
                 <span className="block text-gray-500 font-medium">Tổng số lượng hóa đơn</span>
-                <span className="text-base font-black text-gray-950 font-mono mt-0.5 block">{totalOrdersCount || 105} hóa đơn</span>
-                <span className="text-[10px] text-[#3B82F6] font-bold mt-1 block">Tỉ lệ hoàn thành 95% sau đối soát</span>
+                <span className="text-base font-black text-gray-950 font-mono mt-0.5 block">{totalOrdersCount} hóa đơn</span>
               </div>
             </div>
 
@@ -284,8 +289,7 @@ export default function RevenueReport({ invoices, products }: RevenueReportProps
               </div>
               <div className="text-xs">
                 <span className="block text-gray-500 font-medium">Giá trị đơn hàng trung bình</span>
-                <span className="text-base font-black text-gray-950 font-mono mt-0.5 block">{formatVND(averageOrderValue || 315000)}</span>
-                <span className="text-[10px] text-gray-400 font-medium mt-1 block">Tăng nhẹ nhờ chiến dịch Sale hè</span>
+                <span className="text-base font-black text-gray-950 font-mono mt-0.5 block">{formatVND(averageOrderValue)}</span>
               </div>
             </div>
 
