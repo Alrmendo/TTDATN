@@ -32,3 +32,102 @@ export const searchProducts = async (req: Request, res: Response): Promise<void>
     res.status(500).json({ message: 'Lỗi máy chủ nội bộ' });
   }
 };
+
+export const getProducts = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const products = await Product.findAll({
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['categoryName'],
+        },
+      ],
+      order: [['productName', 'ASC']],
+    });
+
+    res.status(200).json(products);
+  } catch {
+    res.status(500).json({ message: 'Lỗi máy chủ nội bộ' });
+  }
+};
+
+export const createProduct = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const {
+      productName,
+      sku,
+      categoryId,
+      description,
+      price,
+      costPrice,
+    } = req.body;
+
+    const product = await Product.create({
+      productName,
+      sku,
+      categoryId,
+      description,
+      price,
+      costPrice,
+    });
+
+    res.status(201).json(product);
+  } catch {
+    res.status(500).json({ message: 'Lỗi máy chủ nội bộ' });
+  }
+};
+
+export const updateProduct = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const product = await Product.findByPk(String(req.params.id));
+
+    if (!product) {
+      res.status(404).json({
+        message: 'Không tìm thấy sản phẩm',
+      });
+      return;
+    }
+
+    await product.update(req.body);
+
+    res.status(200).json(product);
+  } catch {
+    res.status(500).json({ message: 'Lỗi máy chủ nội bộ' });
+  }
+};
+
+export const deleteProduct = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const product = await Product.findByPk(String(req.params.id));
+
+    if (!product) {
+      res.status(404).json({
+        message: 'Không tìm thấy sản phẩm',
+      });
+      return;
+    }
+
+    await product.update({
+      isActive: false,
+    });
+
+    res.status(200).json({
+      message: 'Đã vô hiệu hóa sản phẩm',
+    });
+  } catch {
+    res.status(500).json({ message: 'Lỗi máy chủ nội bộ' });
+  }
+};

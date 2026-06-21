@@ -1,16 +1,16 @@
 import { Product, Employee, Customer, Invoice, Promotion, Store, PurchaseOrder } from './types';
 
 export const initialProducts: Product[] = [
-  { productId: 'SP001', productName: 'Gạo ST25 Thượng Hạng (5kg)', category: 'Thực phẩm khô', price: 195000, cost: 150000, stock: 45, status: 'Đang kinh doanh' },
-  { productId: 'SP002', productName: 'Nước Mắm Nam Ngư Phú Quốc 650ml', category: 'Gia vị', price: 42000, cost: 30000, stock: 12, status: 'Đang kinh doanh' },
-  { productId: 'SP003', productName: 'Mì Tôm Hảo Hảo Chua Cay (Thùng 30 gói)', category: 'Thực phẩm khô', price: 110000, cost: 92000, stock: 3, status: 'Đang kinh doanh' },
-  { productId: 'SP004', productName: 'Dầu Ăn Simply Nguyên Chất 1L', category: 'Gia vị', price: 58000, cost: 46000, stock: 24, status: 'Đang kinh doanh' },
-  { productId: 'SP005', productName: 'Sữa Tươi Tiệt Trùng Vinamilk (Lốc 4 hộp)', category: 'Sữa & Sản phẩm từ sữa', price: 31000, cost: 24000, stock: 4, status: 'Đang kinh doanh' },
-  { productId: 'SP006', productName: 'Nước Ngọt Coca Cola 320ml (Lốc 6 lon)', category: 'Đồ uống', price: 55000, cost: 42000, stock: 18, status: 'Đang kinh doanh' },
-  { productId: 'SP007', productName: 'Bột Giặt OMO Matic Cửa Trên 4.1kg', category: 'Hóa mỹ phẩm', price: 215000, cost: 175000, stock: 2, status: 'Đang kinh doanh' },
-  { productId: 'SP008', productName: 'Kem Đánh Răng P/S Bảo Vệ 3 Tác Động 230g', category: 'Hóa mỹ phẩm', price: 38000, cost: 28000, stock: 35, status: 'Ngừng kinh doanh' },
-  { productId: 'SP009', productName: 'Nước Rửa Chén Sunlight Chanh 3.6kg', category: 'Hóa mỹ phẩm', price: 115000, cost: 90000, stock: 1, status: 'Đang kinh doanh' },
-  { productId: 'SP010', productName: 'Giấy Vệ Sinh Pulppy (Lốc 10 cuộn)', category: 'Hóa mỹ phẩm', price: 62000, cost: 48000, stock: 5, status: 'Ngừng kinh doanh' },
+  { productId: 'SP001', productName: 'Gạo ST25 Thượng Hạng (5kg)', categoryId: 'mock-thuc-pham-kho', category: 'Thực phẩm khô', price: 195000, cost: 150000, stock: 45, status: 'Đang kinh doanh' },
+  { productId: 'SP002', productName: 'Nước Mắm Nam Ngư Phú Quốc 650ml', categoryId: 'mock-gia-vi', category: 'Gia vị', price: 42000, cost: 30000, stock: 12, status: 'Đang kinh doanh' },
+  { productId: 'SP003', productName: 'Mì Tôm Hảo Hảo Chua Cay (Thùng 30 gói)', categoryId: 'mock-thuc-pham-kho', category: 'Thực phẩm khô', price: 110000, cost: 92000, stock: 3, status: 'Đang kinh doanh' },
+  { productId: 'SP004', productName: 'Dầu Ăn Simply Nguyên Chất 1L', categoryId: 'mock-gia-vi', category: 'Gia vị', price: 58000, cost: 46000, stock: 24, status: 'Đang kinh doanh' },
+  { productId: 'SP005', productName: 'Sữa Tươi Tiệt Trùng Vinamilk (Lốc 4 hộp)', categoryId: 'mock-sua', category: 'Sữa & Sản phẩm từ sữa', price: 31000, cost: 24000, stock: 4, status: 'Đang kinh doanh' },
+  { productId: 'SP006', productName: 'Nước Ngọt Coca Cola 320ml (Lốc 6 lon)', categoryId: 'mock-do-uong', category: 'Đồ uống', price: 55000, cost: 42000, stock: 18, status: 'Đang kinh doanh' },
+  { productId: 'SP007', productName: 'Bột Giặt OMO Matic Cửa Trên 4.1kg', categoryId: 'mock-hoa-my-pham', category: 'Hóa mỹ phẩm', price: 215000, cost: 175000, stock: 2, status: 'Đang kinh doanh' },
+  { productId: 'SP008', productName: 'Kem Đánh Răng P/S Bảo Vệ 3 Tác Động 230g', categoryId: 'mock-hoa-my-pham', category: 'Hóa mỹ phẩm', price: 38000, cost: 28000, stock: 35, status: 'Ngừng kinh doanh' },
+  { productId: 'SP009', productName: 'Nước Rửa Chén Sunlight Chanh 3.6kg', categoryId: 'mock-hoa-my-pham', category: 'Hóa mỹ phẩm', price: 115000, cost: 90000, stock: 1, status: 'Đang kinh doanh' },
+  { productId: 'SP010', productName: 'Giấy Vệ Sinh Pulppy (Lốc 10 cuộn)', categoryId: 'mock-hoa-my-pham', category: 'Hóa mỹ phẩm', price: 62000, cost: 48000, stock: 5, status: 'Ngừng kinh doanh' },
 ];
 
 export const initialEmployees: Employee[] = [
