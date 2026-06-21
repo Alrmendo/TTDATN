@@ -203,6 +203,7 @@ export default function App() {
       data.map((p) => ({
         productId: p.id,
         productName: p.productName,
+        categoryId: p.categoryId,
         category: p.category?.categoryName ?? '',
         price: Number(p.price),
         cost: Number(p.costPrice ?? 0),
@@ -221,7 +222,7 @@ export default function App() {
     await createProduct({
       productName: product.productName,
       sku: product.productId,
-      categoryId: product.category,
+      categoryId: product.categoryId,
       price: product.price,
       costPrice: product.cost,
     });
@@ -242,7 +243,7 @@ export default function App() {
             data.productName,
 
           categoryId:
-            data.category,
+            data.categoryId,
 
           price:
             data.price,
