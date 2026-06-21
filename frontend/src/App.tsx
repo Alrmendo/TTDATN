@@ -570,6 +570,7 @@ export default function App() {
                 {userRole === 'Quản lý' && [
                   { name: 'Tổng quan', icon: LayoutDashboard },
                   { name: 'Sản phẩm', icon: ShoppingBag },
+                  { name: 'Đơn nhập hàng', icon: PackageCheck },
                   { name: 'Nhân viên', icon: Users },
                   { name: 'Khách hàng', icon: UserCheck },
                   { name: 'Khuyến mãi', icon: Gift },
@@ -732,6 +733,22 @@ export default function App() {
                       onUpdateProduct={handleUpdateProduct} 
                       onDeleteProduct={handleDeleteProduct}
                       onSearch={handleSearchProducts}
+                    />
+                  )}
+                  {activeTab === 'Đơn nhập hàng' && (
+                    <WarehouseManagement
+                      products={products}
+                      purchaseOrders={purchaseOrders}
+                      stores={initialStores}
+                      activeTab="Đơn nhập hàng"
+                      userRole={userRole}
+                      onConfirmPurchaseOrder={handleConfirmPurchaseOrder}
+                      onAdjustStock={(productId, newStock) => {
+                        setProducts(prev => prev.map(p =>
+                          p.productId === productId ? { ...p, stock: newStock } : p
+                        ));
+                      }}
+                      onAddNewPurchaseOrder={(po) => setPurchaseOrders([po, ...purchaseOrders])}
                     />
                   )}
                   {activeTab === 'Nhân viên' && (
