@@ -41,6 +41,9 @@ app.use('/api/promotions', promotionRoutes);
 import purchaseOrderRoutes from './routes/purchase-order.routes';
 app.use('/api/purchase-orders', purchaseOrderRoutes);
 
+import supplierRoutes from './routes/supplier.routes';
+app.use('/api/suppliers', supplierRoutes);
+
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
