@@ -32,6 +32,7 @@ TTDATN/
 ├── frontend/         # React/Vite SPA (port 3000)
 │   └── src/
 │       ├── components/   # One file per business domain
+│       ├── services/     # axios API service layer — product/category/promotion.service.ts
 │       ├── utils/        # roleMapping helpers
 │       ├── types.ts      # Shared TypeScript interfaces
 │       └── data.ts       # Mock data (used by non-migrated components)
@@ -87,6 +88,9 @@ npm run dev                   # starts on port 3000
 | `InvoiceDetail` | `invoice_details` | price snapshot at time of sale; one row per product per invoice (upserted by `OrderService.addItem`) |
 | `Promotion` | `promotions` | `type` ENUM(`percentage`/`fixed`); nullable `productId` FK (NULL = whole-order promo); `isValid(orderValue)` / `calculateDiscount(amount)` instance methods |
 | `LoyaltyPoint` | `loyalty_points` | 1:1 with `Customer` via UNIQUE `customerId` FK; no `createdAt` |
+| `Supplier` | `suppliers` | external actor, no login account — contact info only |
+| `PurchaseOrder` | `purchase_orders` | status ENUM(`pending`/`completed`/`cancelled`); `confirmedBy`/`confirmedAt` nullable until `confirmReceipt()` |
+| `PurchaseOrderDetail` | `purchase_order_details` | `receivedQuantity` nullable until confirmed — actual received qty can differ from ordered qty |
 
 ### Associations
 - `User` N:1 `Store`
@@ -97,6 +101,11 @@ npm run dev                   # starts on port 3000
 - `InvoiceDetail` N:1 `Invoice`, N:1 `Product` (as `product`)
 - `Promotion` N:1 `Product` (nullable)
 - `LoyaltyPoint` 1:1 `Customer`
+- `Supplier` 1:N `PurchaseOrder`
+- `Store` 1:N `PurchaseOrder`
+- `PurchaseOrder` N:1 `User` (as `creator` for `createdBy`, as `confirmer` for `confirmedBy`)
+- `PurchaseOrder` 1:N `PurchaseOrderDetail` (as `details`, `onDelete: CASCADE`)
+- `PurchaseOrderDetail` N:1 `Product` (as `product`)
 
 ### Middleware
 - `authMiddleware` — verifies Bearer JWT, attaches `req.user: { userId, role, storeId }`
@@ -114,7 +123,22 @@ npm run dev                   # starts on port 3000
 | `GET` | `/api/inventory?storeId=` | Auth | Stock levels for a store |
 | `GET` | `/api/inventory/low-stock?storeId=` | Auth | Products under `lowStockThreshold` |
 | `PATCH` | `/api/inventory` | WarehouseStaff | `{ storeId, productId, quantity, mode }` — manual stock adjustment |
-| `GET` | `/api/products/search?q=` | Auth | Search active products by name/SKU |
+| `GET` | `/api/products/search?q=` | Auth | Search active products by name/SKU (includes `category`) |
+| `GET` | `/api/products` | Auth | List all products incl. inactive (management UI) |
+| `POST` | `/api/products` | Manager | Create product |
+| `PUT` | `/api/products/:id` | Manager | Update product |
+| `DELETE` | `/api/products/:id` | Manager | Soft delete (`isActive=false`) |
+| `GET` | `/api/categories` | Auth | List categories (no create/update/delete endpoint yet) |
+| `GET` | `/api/promotions` | Auth | List promotions |
+| `POST` | `/api/promotions` | Manager | Create promotion |
+| `PUT` | `/api/promotions/:id` | Manager | Deactivate promotion (`isActive=false`) — **not** a general update |
+| `GET` | `/api/suppliers` | Auth | List suppliers |
+| `POST` | `/api/suppliers` | Manager | Create supplier |
+| `GET` | `/api/purchase-orders` | Manager, WarehouseStaff | List purchase orders (filters: `storeId`, `status`, `startDate`, `endDate`; WarehouseStaff store-scoped) |
+| `GET` | `/api/purchase-orders/:id` | Manager, WarehouseStaff | Purchase order detail incl. supplier/store/details |
+| `POST` | `/api/purchase-orders` | Manager | Create purchase order `{ supplierId, storeId, items }` |
+| `PUT` | `/api/purchase-orders/:id/confirm` | WarehouseStaff | `{ receivedItems }` — confirm receipt, increments inventory per item |
+| `PUT` | `/api/purchase-orders/:id/cancel` | Manager | Cancel order (only if still `pending`) |
 | `GET` | `/api/customers?q=` | Staff, Manager | Search customers by name/phone (includes loyalty points) |
 | `POST` | `/api/customers` | Staff, Manager | Create customer (also creates a `loyalty_points` row) |
 | `POST` | `/api/invoices` | Staff | Start a new draft invoice for the cashier's store |
@@ -142,10 +166,10 @@ npm run dev                   # starts on port 3000
 | `AccountManagement` | ✅ Connected | Fetches accounts + stores; create/edit/toggle via API |
 | `SalesManagement` | ✅ Connected | Full POS flow against `/api/invoices`, `/api/products/search`, `/api/customers` |
 | `OrderHistory` | ✅ Connected | Staff "Lịch sử đơn hàng" tab — `GET /api/invoices` with date/search filters, detail modal, print |
-| `ProductManagement` | 🔄 Mock data | Pending backend CRUD routes (search-only endpoint exists) |
-| `WarehouseManagement` | 🔄 Mock data | Inventory API exists (`/api/inventory`) but not yet wired into this component |
+| `ProductManagement` | ✅ Connected | Full CRUD via `services/product.service.ts` + `services/category.service.ts` (axios); server-side search |
+| `PromotionManagement` | ✅ Connected (partial) | List + create via `services/promotion.service.ts`; "Sửa" button intentionally disabled — backend has no general update endpoint yet, only deactivate |
+| `WarehouseManagement` | 🔄 Mock data | Inventory + Purchase Order APIs exist (`/api/inventory`, `/api/purchase-orders`) but not yet wired into this component |
 | `CustomerManagement` | 🔄 Mock data | Customer search/create API exists but not yet wired into this component |
-| `PromotionManagement` | 🔄 Mock data | Pending backend routes |
 | `StoreManagement` | 🔄 Mock data | Pending backend routes |
 | `DashboardOverview` | 🔄 Mock data | Pending backend routes |
 | `ReportView` | 🔄 Mock data, unused | Superseded by `OrderHistory` for Staff; no longer rendered anywhere |
@@ -157,10 +181,12 @@ npm run dev                   # starts on port 3000
 ## Pending Implementation
 
 **Backend:**
-- Full Products CRUD (currently only `GET /api/products/search` exists)
-- Missing models: `suppliers`, `purchase_orders`, `purchase_order_details`, `stock_transfers`
-- Promotion/loyalty management endpoints (create/update promotions; redeem/check loyalty balance — service methods exist, no routes yet)
+- Category CRUD (create/update/delete) — only `GET /api/categories` exists today
+- `PromotionService.updatePromotion` + general `PUT` endpoint (today's `PUT /api/promotions/:id` only deactivates)
+- Loyalty point routes (redeem/check balance — service methods exist, no HTTP routes yet)
+- Missing model: `stock_transfers` (UC-02 "Điều chuyển hàng giữa chi nhánh") — not yet assigned/implemented
+- Re-validate/clear an applied promotion server-side when cart contents change after the discount was applied (frontend already clears its own local discount state on cart edits, but there's no equivalent server-side guard)
 
 **Frontend:**
-- Migrate remaining mock-data components (`ProductManagement`, `WarehouseManagement`, `CustomerManagement`, `PromotionManagement`, `StoreManagement`, `DashboardOverview`, `EmployeeManagement`, `RevenueReport`) to real API calls
-- Re-validate/clear an applied promotion server-side when cart contents change after the discount was applied (frontend already clears its own local discount state on cart edits, but there's no equivalent server-side guard)
+- Migrate remaining mock-data components (`WarehouseManagement`, `CustomerManagement`, `StoreManagement`, `DashboardOverview`, `EmployeeManagement`, `RevenueReport`) to real API calls
+- `WarehouseManagement` and `CustomerManagement` are the natural next targets — their backend APIs already exist, they're just not wired up yet
