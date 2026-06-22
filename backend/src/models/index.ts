@@ -12,6 +12,7 @@ import { LoyaltyPoint } from './loyalty-point.model';
 import { Supplier } from './supplier.model';
 import { PurchaseOrder } from './purchase-order.model';
 import { PurchaseOrderDetail } from './purchase-order-detail.model';
+import { StockTransfer } from './stock-transfer.model';
 
 // --- Users & Stores ---
 User.belongsTo(Store, { foreignKey: 'storeId' });
@@ -60,6 +61,13 @@ Product.hasMany(Promotion, { foreignKey: 'productId' });
 Invoice.belongsTo(Promotion, { foreignKey: 'promotionId', as: 'promotion' });
 Promotion.hasMany(Invoice, { foreignKey: 'promotionId' });
 
+// --- Stock Transfers ---
+StockTransfer.belongsTo(Store, { foreignKey: 'fromStoreId', as: 'fromStore' });
+StockTransfer.belongsTo(Store, { foreignKey: 'toStoreId', as: 'toStore' });
+StockTransfer.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+StockTransfer.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+StockTransfer.belongsTo(User, { foreignKey: 'confirmedBy', as: 'confirmer' });
+
 // --- Loyalty Points ---
 LoyaltyPoint.belongsTo(Customer, { foreignKey: 'customerId' });
 Customer.hasOne(LoyaltyPoint, { foreignKey: 'customerId', as: 'loyaltyPoints' });
@@ -83,4 +91,5 @@ export {
   Supplier,
   PurchaseOrder,
   PurchaseOrderDetail,
+  StockTransfer,
 };
