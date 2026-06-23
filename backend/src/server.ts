@@ -44,6 +44,9 @@ app.use('/api/purchase-orders', purchaseOrderRoutes);
 import supplierRoutes from './routes/supplier.routes';
 app.use('/api/suppliers', supplierRoutes);
 
+import stockTransferRoutes from './routes/stock-transfer.routes';
+app.use('/api/stock-transfers', stockTransferRoutes);
+
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {

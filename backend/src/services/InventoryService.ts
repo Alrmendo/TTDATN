@@ -40,7 +40,8 @@ export class InventoryService {
     storeId: string,
     productId: string,
     quantity: number,
-    mode: InventoryUpdateMode
+    mode: InventoryUpdateMode,
+    transaction?: Transaction
   ): Promise<Inventory> {
     if (quantity <= 0) {
       throw new InventoryServiceError('quantity phải là số dương', 400);
@@ -49,7 +50,7 @@ export class InventoryService {
       throw new InventoryServiceError("mode phải là 'increase' hoặc 'decrease'", 400);
     }
 
-    return sequelize.transaction(async (t: Transaction) => {
+    const run = async (t: Transaction) => {
       // Lock dòng tồn kho để tránh race condition khi nhiều giao dịch
       // (bán hàng, nhập hàng, điều chuyển) cùng sửa 1 sản phẩm/chi nhánh.
       let record = await Inventory.findOne({
@@ -79,7 +80,15 @@ export class InventoryService {
       }
 
       return record;
-    });
+    };
+
+    // Nếu được truyền transaction từ ngoài (vd. StockTransferService cần atomic
+    // chung với các thao tác khác), dùng lại transaction đó thay vì tự mở transaction mới.
+    if (transaction) {
+      return run(transaction);
+    }
+
+    return sequelize.transaction(run);
   }
 
   /**
