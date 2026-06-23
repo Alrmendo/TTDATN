@@ -54,6 +54,7 @@ import SalesManagement from './components/SalesManagement';
 import OrderHistory from './components/OrderHistory';
 import RevenueReport from './components/RevenueReport';
 import WarehouseManagement from './components/WarehouseManagement';
+import StockTransferManagement from './components/StockTransferManagement';
 
 import { searchProducts, getProducts, createProduct, deleteProduct, updateProduct } from './services/product.service';
 
@@ -571,6 +572,7 @@ export default function App() {
                   { name: 'Tổng quan', icon: LayoutDashboard },
                   { name: 'Sản phẩm', icon: ShoppingBag },
                   { name: 'Đơn nhập hàng', icon: PackageCheck },
+                  { name: 'Điều chuyển hàng', icon: RefreshCw },
                   { name: 'Nhân viên', icon: Users },
                   { name: 'Khách hàng', icon: UserCheck },
                   { name: 'Khuyến mãi', icon: Gift },
@@ -751,6 +753,9 @@ export default function App() {
                       onAddNewPurchaseOrder={(po) => setPurchaseOrders([po, ...purchaseOrders])}
                     />
                   )}
+                  {activeTab === 'Điều chuyển hàng' && (
+                    <StockTransferManagement userRole={userRole} />
+                  )}
                   {activeTab === 'Nhân viên' && (
                     <EmployeeManagement 
                       employees={employees} 
@@ -822,7 +827,10 @@ export default function App() {
               )}
 
               {/* --- WAREHOUSE ROLE VIEW "Tồn kho", "Đơn nhập hàng", and "Điều chuyển hàng" --- */}
-              {userRole === 'Nhân viên kho' && (
+              {userRole === 'Nhân viên kho' && activeTab === 'Điều chuyển hàng' && (
+                <StockTransferManagement userRole={userRole} />
+              )}
+              {userRole === 'Nhân viên kho' && activeTab !== 'Điều chuyển hàng' && (
                 <WarehouseManagement
                   products={products}
                   purchaseOrders={purchaseOrders}
@@ -831,7 +839,7 @@ export default function App() {
                   userRole={userRole}
                   onConfirmPurchaseOrder={handleConfirmPurchaseOrder}
                   onAdjustStock={(productId, newStock) => {
-                    setProducts(prevProducts => prevProducts.map(p => 
+                    setProducts(prevProducts => prevProducts.map(p =>
                       p.productId === productId ? { ...p, stock: newStock } : p
                     ));
                   }}
