@@ -1,204 +1,145 @@
-// backend/src/services/ReportService.ts
-//
-// Module: Báo cáo (SD-06, UC-04). Phụ trách bởi "Người 3 (Tồn kho & Báo cáo)"
-// theo Schema.md — cùng người với module Tồn kho, nên tái dùng quy ước
-// validate + style response đã thống nhất ở InventoryService.
-//
-// Công thức:
-// - Doanh thu: chỉ tính invoices.status = 'completed' (đơn đã chốt thật,
-//   không tính draft/cancelled), tổng theo invoices.totalAmount.
-//   Lọc theo invoices.createdAt trong [startDate, endOfDay(endDate)].
-// - Giá trị tồn kho: inventory.quantity * products.costPrice
-//   (Schema.md §4: "costPrice — giá nhập — dùng cho báo cáo tồn kho (SD-06)").
+import { Op, Sequelize } from 'sequelize';
+import { Invoice, InvoiceDetail, Inventory, Product, Store } from '../models';
 
-import { Op } from 'sequelize';
-import { sequelize } from '../config/database';
-import { Invoice } from '../models';
-import { Inventory } from '../models/Inventory';
-import { Product } from '../models';
-import { Store } from '../models';
-import {
-  parseAndValidateDateRange,
-  DateRangeError,
-} from '../utils/dateRangeValidator';
+// Inventory.belongsTo(Product/Store) defined with no `as:` alias in
+// models/index.ts → default include accessor = model name (PascalCase).
+const getProductJoin = (rec: any) => rec.Product ?? rec.product ?? null;
+const getStoreJoin = (rec: any) => rec.Store ?? rec.store ?? null;
 
-export { DateRangeError };
-
-export interface RevenueByDay {
-  date: string; // 'YYYY-MM-DD'
-  revenue: number;
-  orderCount: number;
-}
-
-export interface RevenueByStore {
-  storeId: string;
-  storeName: string;
-  revenue: number;
-  orderCount: number;
-  percentage: number; // % trên totalRevenue, đã round
-}
-
-export interface RevenueReport {
-  startDate: string;
-  endDate: string;
-  storeId: string | null;
-  totalRevenue: number;
-  totalOrders: number;
-  byDay: RevenueByDay[];
-  byStore: RevenueByStore[];
-}
-
-export interface InventoryReportItem {
-  productId: string;
-  productName: string;
-  sku: string;
-  storeId: string;
-  quantity: number;
-  lowStockThreshold: number;
-  costPrice: number;
-  stockValue: number; // quantity * costPrice
-}
-
-export interface InventoryReportSummary {
-  totalSkuCount: number;
-  totalStockValue: number;
-  lowStockCount: number;
-}
-
-export interface InventoryReport {
-  storeId: string | null;
-  summary: InventoryReportSummary;
-  items: InventoryReportItem[];
-}
-
-export class ReportService {
+const ReportService = {
   /**
-   * GET /reports/revenue?startDate=&endDate=&storeId=
-   *
-   * @param startDateRaw query string startDate (bắt buộc)
-   * @param endDateRaw   query string endDate (bắt buộc)
-   * @param storeId      lọc theo chi nhánh — nếu không truyền, tính toàn hệ thống
+   * Báo cáo doanh thu trong khoảng [startDate, endDate], lọc theo storeId (optional).
+   * Chỉ tính các invoice có status = 'completed'.
    */
-  static async getRevenueReport(
-    startDateRaw: unknown,
-    endDateRaw: unknown,
-    storeId?: string
-  ): Promise<RevenueReport> {
-    // Validate: startDate <= endDate — throw DateRangeError('Khoảng thời gian không hợp lệ') nếu sai
-    const { startDate, endDate } = parseAndValidateDateRange(startDateRaw, endDateRaw);
-
-    const where: Record<string, unknown> = {
+  async getRevenueReport(startDate: Date, endDate: Date, storeId?: string) {
+    const where: any = {
       status: 'completed',
       createdAt: { [Op.between]: [startDate, endDate] },
     };
-    if (storeId) {
-      where.storeId = storeId;
+    if (storeId) where.storeId = storeId;
+
+    const invoices = await Invoice.findAll({ where, raw: true });
+
+    const totalRevenue = invoices.reduce((sum: number, inv: any) => sum + Number(inv.totalAmount), 0);
+    const totalDiscount = invoices.reduce((sum: number, inv: any) => sum + Number(inv.discountAmount), 0);
+    const totalSubtotal = invoices.reduce((sum: number, inv: any) => sum + Number(inv.subtotal), 0);
+    const totalOrders = invoices.length;
+    const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    // Gộp doanh thu theo ngày — dùng cho biểu đồ đường trên Dashboard / màn Báo cáo doanh thu
+    const dailyMap = new Map<string, number>();
+    for (const inv of invoices as any[]) {
+      const day = new Date(inv.createdAt).toISOString().slice(0, 10);
+      dailyMap.set(day, (dailyMap.get(day) || 0) + Number(inv.totalAmount));
     }
+    const dailyRevenue = Array.from(dailyMap.entries())
+      .map(([date, amount]) => ({ date, amount }))
+      .sort((a, b) => a.date.localeCompare(b.date));
 
-    const invoices = await Invoice.findAll({
-      where,
-      attributes: ['id', 'storeId', 'totalAmount', 'createdAt'],
-      order: [['createdAt', 'ASC']],
-    });
+    // Top sản phẩm bán chạy — group theo InvoiceDetail trước, KHÔNG join Product
+    // trong cùng câu group-by (tránh phụ thuộc vào alias association cụ thể),
+    // rồi map tên sản phẩm lại bằng 1 query Product riêng.
+    const invoiceIds = invoices.map((inv: any) => inv.id);
+    let topProducts: any[] = [];
+    if (invoiceIds.length > 0) {
+      const grouped = await InvoiceDetail.findAll({
+        attributes: [
+          'productId',
+          [Sequelize.fn('SUM', Sequelize.col('quantity')), 'totalQuantity'],
+          [Sequelize.fn('SUM', Sequelize.col('subtotal')), 'totalRevenue'],
+        ],
+        where: { invoiceId: { [Op.in]: invoiceIds } },
+        group: ['productId'],
+        order: [[Sequelize.literal('"totalQuantity"'), 'DESC']],
+        limit: 5,
+        raw: true,
+      });
 
-    const byDayMap = new Map<string, { revenue: number; orderCount: number }>();
-    const byStoreMap = new Map<string, { revenue: number; orderCount: number }>();
-    let totalRevenue = 0;
+      const productIds = (grouped as any[]).map((g) => g.productId);
+      const products = productIds.length
+        ? await Product.findAll({
+            where: { id: { [Op.in]: productIds } },
+            attributes: ['id', 'productName', 'sku'],
+            raw: true,
+          })
+        : [];
+      const productMap = new Map((products as any[]).map((p) => [p.id, p]));
 
-    for (const inv of invoices) {
-      const dayKey = toDateKey(inv.createdAt);
-      const amount = Number(inv.totalAmount);
-      totalRevenue += amount;
-
-      const existingDay = byDayMap.get(dayKey);
-      if (existingDay) {
-        existingDay.revenue += amount;
-        existingDay.orderCount += 1;
-      } else {
-        byDayMap.set(dayKey, { revenue: amount, orderCount: 1 });
-      }
-
-      const existingStore = byStoreMap.get(inv.storeId);
-      if (existingStore) {
-        existingStore.revenue += amount;
-        existingStore.orderCount += 1;
-      } else {
-        byStoreMap.set(inv.storeId, { revenue: amount, orderCount: 1 });
-      }
+      topProducts = (grouped as any[]).map((g) => ({
+        productId: g.productId,
+        productName: productMap.get(g.productId)?.productName ?? null,
+        sku: productMap.get(g.productId)?.sku ?? null,
+        totalQuantity: Number(g.totalQuantity),
+        totalRevenue: Number(g.totalRevenue),
+      }));
     }
-
-    const byDay: RevenueByDay[] = Array.from(byDayMap.entries())
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([date, v]) => ({ date, revenue: v.revenue, orderCount: v.orderCount }));
-
-    const byStore: RevenueByStore[] = await Promise.all(
-      Array.from(byStoreMap.entries()).map(async ([sId, v]) => {
-        const store = await Store.findByPk(sId);
-        return {
-          storeId: sId,
-          storeName: String(store?.get('storeName') ?? ''),
-          revenue: v.revenue,
-          orderCount: v.orderCount,
-          percentage: totalRevenue > 0 ? Math.round((v.revenue / totalRevenue) * 100) : 0,
-        };
-      })
-    );
-    byStore.sort((a, b) => b.revenue - a.revenue);
 
     return {
-      startDate: toDateKey(startDate),
-      endDate: toDateKey(endDate),
-      storeId: storeId ?? null,
+      startDate: startDate.toISOString().slice(0, 10),
+      endDate: endDate.toISOString().slice(0, 10),
+      storeId: storeId || null,
       totalRevenue,
-      totalOrders: invoices.length,
-      byDay,
-      byStore,
+      totalDiscount,
+      totalSubtotal,
+      totalOrders,
+      averageOrderValue,
+      dailyRevenue,
+      topProducts,
     };
-  }
+  },
 
   /**
-   * GET /reports/inventory?storeId=
-   * Không bắt buộc storeId — nếu không truyền, báo cáo toàn hệ thống.
+   * Báo cáo tồn kho — lọc theo storeId (optional, không truyền = toàn hệ thống).
    */
-  static async getInventoryReport(storeId?: string): Promise<InventoryReport> {
-    const where: Record<string, unknown> = {};
-    if (storeId) {
-      where.storeId = storeId;
-    }
+  async getInventoryReport(storeId?: string) {
+    const where: any = {};
+    if (storeId) where.storeId = storeId;
 
-    const records = await Inventory.findAll({ where });
+    const records = await Inventory.findAll({
+      where,
+      include: [
+        { model: Product, attributes: ['id', 'productName', 'sku', 'price', 'costPrice', 'isActive'] },
+        { model: Store, attributes: ['id', 'storeName'] },
+      ],
+    });
 
-    const items: InventoryReportItem[] = await Promise.all(
-      records.map(async (r) => {
-        const product = await Product.findByPk(r.productId);
-        const costPrice = Number(product?.get('costPrice') ?? 0);
-        return {
-          productId: r.productId,
-          productName: String(product?.get('productName') ?? ''),
-          sku: String(product?.get('sku') ?? ''),
-          storeId: r.storeId,
-          quantity: r.quantity,
-          lowStockThreshold: r.lowStockThreshold,
-          costPrice,
-          stockValue: r.quantity * costPrice,
-        };
-      })
-    );
+    let totalStockValue = 0;
+    let totalUnits = 0;
+    let lowStockCount = 0;
 
-    const summary: InventoryReportSummary = {
-      totalSkuCount: items.length,
-      totalStockValue: items.reduce((sum, i) => sum + i.stockValue, 0),
-      lowStockCount: items.filter((i) => i.quantity < i.lowStockThreshold).length,
-    };
+    const items = (records as any[]).map((rec) => {
+      const product = getProductJoin(rec);
+      const store = getStoreJoin(rec);
+      const costPrice = Number(product?.costPrice || 0);
+      const stockValue = costPrice * rec.quantity;
+      const isLowStock = rec.quantity < rec.lowStockThreshold;
+
+      totalStockValue += stockValue;
+      totalUnits += rec.quantity;
+      if (isLowStock) lowStockCount += 1;
+
+      return {
+        productId: rec.productId,
+        productName: product?.productName ?? null,
+        sku: product?.sku ?? null,
+        storeId: rec.storeId,
+        storeName: store?.storeName ?? null,
+        quantity: rec.quantity,
+        lowStockThreshold: rec.lowStockThreshold,
+        isLowStock,
+        stockValue,
+      };
+    });
 
     return {
-      storeId: storeId ?? null,
-      summary,
+      storeId: storeId || null,
+      totalProducts: items.length,
+      totalUnits,
+      totalStockValue,
+      lowStockCount,
       items,
     };
-  }
-}
+  },
+};
 
-function toDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
+export default ReportService;

@@ -709,6 +709,7 @@ export default function App() {
                   stores={initialStores}
                   activeTab={activeTab as any}
                   userRole={userRole}
+				  currentUserStoreId={currentUser?.storeId ?? null}
                   onConfirmPurchaseOrder={handleConfirmPurchaseOrder}
                   onAdjustStock={(productId, newStock) => {
                     setProducts(prevProducts => prevProducts.map(p => 

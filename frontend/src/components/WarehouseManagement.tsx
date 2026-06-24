@@ -1,5 +1,6 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { Product, PurchaseOrder, Store } from '../types';
+import { fetchStockByStore, setInventoryQuantity, ApiStockItem } from '../services/inventoryApi';
 import { 
   Boxes, 
   AlertTriangle, 
@@ -28,6 +29,8 @@ interface WarehouseManagementProps {
   onConfirmPurchaseOrder: (orderId: string) => void;
   onAddNewPurchaseOrder?: (po: PurchaseOrder) => void;
   userRole?: string;
+  /** storeId của nhân viên kho đang đăng nhập (Manager bỏ trống, tự chọn chi nhánh bằng dropdown) */
+  currentUserStoreId?: string | null;
 }
 
 export default function WarehouseManagement({
@@ -38,15 +41,48 @@ export default function WarehouseManagement({
   onAdjustStock,
   onConfirmPurchaseOrder,
   onAddNewPurchaseOrder,
-  userRole = 'Nhân viên kho'
+  userRole = 'Nhân viên kho',
+  currentUserStoreId = null
 }: WarehouseManagementProps) {
-  
+
+  const isWarehouseStaff = userRole === 'Nhân viên kho';
+
+  // ===== Tồn kho thực (API) =====
+  const [selectedStoreId, setSelectedStoreId] = useState<string>(
+    isWarehouseStaff ? (currentUserStoreId || stores[0]?.id || '') : (stores[0]?.id || '')
+  );
+  const [apiStock, setApiStock] = useState<ApiStockItem[]>([]);
+  const [isLoadingStock, setIsLoadingStock] = useState(true);
+  const [stockFetchError, setStockFetchError] = useState('');
+  const [isSavingStock, setIsSavingStock] = useState(false);
+
+  const loadStock = async (storeId: string) => {
+    if (!storeId) return;
+    setIsLoadingStock(true);
+    setStockFetchError('');
+    try {
+      const data = await fetchStockByStore(storeId);
+      setApiStock(data);
+    } catch (err) {
+      setStockFetchError(err instanceof Error ? err.message : 'Không thể tải tồn kho');
+    } finally {
+      setIsLoadingStock(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'Tồn kho') {
+      loadStock(selectedStoreId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedStoreId]);
+
   // Search & Filter state for Tồn kho
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Tất cả');
 
-  // Modal active states
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  // Modal active states (điều chỉnh tồn kho thực tế — dùng dữ liệu API)
+  const [editingStockItem, setEditingStockItem] = useState<ApiStockItem | null>(null);
   const [newStockVal, setNewStockVal] = useState(0);
 
   // Stock Transfer state
@@ -102,41 +138,56 @@ export default function WarehouseManagement({
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
   };
 
-  // ------------------ DATA CALCULATION FOR METRICS ------------------
-  // Total distinct products
-  const totalDistinctProducts = products.length;
+  // ------------------ DATA CALCULATION FOR METRICS (Tồn kho — dữ liệu API theo chi nhánh) ------------------
+  // Total distinct products đang có bản ghi tồn kho tại chi nhánh đang chọn
+  const totalDistinctProducts = apiStock.length;
 
-  // Products with low stock level (< 10)
-  const lowStockProducts = products.filter(p => p.stock < 10);
+  // Sản phẩm dưới ngưỡng cảnh báo riêng của từng sản phẩm (lowStockThreshold, mặc định 10)
+  const lowStockProducts = apiStock.filter(item => item.quantity < item.lowStockThreshold);
   const lowStockCount = lowStockProducts.length;
 
   // Pending purchase orders count
   const pendingOrdersCount = purchaseOrders.filter(po => po.status === 'Chờ xác nhận').length;
 
   // Filtered Products for the Tồn kho grid
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.productName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          p.productId.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'Tất cả' || p.category === selectedCategory;
+  const filteredProducts = apiStock.filter(item => {
+    const matchesSearch =
+      (item.productName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.sku || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'Tất cả' || item.categoryName === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
-  // Unique categories list
-  const categoriesList = Array.from(new Set(products.map(p => p.category)));
+  // Unique categories list (bỏ qua sản phẩm chưa gán ngành hàng)
+  const categoriesList = Array.from(new Set(apiStock.map(item => item.categoryName).filter((c): c is string => !!c)));
 
-  // Handle Adjustment Submission
-  const handleSaveStockAdjustment = (e: FormEvent) => {
+  // Handle Adjustment Submission — gọi PUT /api/inventory/:productId (đặt số tuyệt đối)
+  const handleSaveStockAdjustment = async (e: FormEvent) => {
     e.preventDefault();
-    if (!editingProduct) return;
-    onAdjustStock(editingProduct.productId, newStockVal);
-    setEditingProduct(null);
-    triggerNotification(`Đã cập nhật số lượng tồn kho sản phẩm ${editingProduct.productName} thành công!`);
+    if (!editingStockItem || !selectedStoreId) return;
+    setIsSavingStock(true);
+    try {
+      const updated = await setInventoryQuantity(editingStockItem.productId, selectedStoreId, newStockVal);
+      setApiStock(prev => prev.map(item =>
+        item.productId === editingStockItem.productId
+          ? { ...item, quantity: updated.quantity, lastUpdated: updated.lastUpdated }
+          : item
+      ));
+      // Giữ tương thích với phần còn lại của app vẫn dùng products mock (vd. Dashboard cũ) — bỏ qua nếu không khớp ID
+      onAdjustStock(editingStockItem.productId, newStockVal);
+      setEditingStockItem(null);
+      triggerNotification(`Đã cập nhật số lượng tồn kho sản phẩm ${editingStockItem.productName} thành công!`);
+    } catch (err) {
+      triggerNotification(err instanceof Error ? err.message : 'Cập nhật tồn kho thất bại, vui lòng thử lại.');
+    } finally {
+      setIsSavingStock(false);
+    }
   };
 
   // Open Edit Stock adjustments
-  const handleOpenEditStock = (p: Product) => {
-    setEditingProduct(p);
-    setNewStockVal(p.stock);
+  const handleOpenEditStock = (item: ApiStockItem) => {
+    setEditingStockItem(item);
+    setNewStockVal(item.quantity);
   };
 
   // Handle local purchase order addition
@@ -171,6 +222,7 @@ export default function WarehouseManagement({
     setIsCreatingPO(false);
     triggerNotification(`Đã tạo đơn yêu cầu nhập hàng ${newId} thành công (Chờ thủ kho duyệt nhập)!`);
   };
+
 
   // Handle custom branch stock transfers
   const handleCreateTransfer = (e: FormEvent) => {
@@ -250,7 +302,36 @@ export default function WarehouseManagement({
       {/* ================= VIEW 1: TỒN KHO ================= */}
       {activeTab === 'Tồn kho' && (
         <div className="space-y-6 animate-fadeIn">
-          
+
+          {/* Store selector (chỉ Manager mới được đổi; Nhân viên kho cố định theo chi nhánh của mình) */}
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-3xs flex flex-col sm:flex-row sm:items-center gap-3">
+            <span className="text-[10px] font-bold text-gray-500 uppercase whitespace-nowrap">Chi nhánh xem tồn kho:</span>
+            <select
+              value={selectedStoreId}
+              onChange={(e) => setSelectedStoreId(e.target.value)}
+              disabled={isWarehouseStaff}
+              className="flex-1 border border-gray-300 rounded-lg p-2 text-xs font-bold bg-white text-gray-900 focus:outline-none disabled:bg-gray-50 disabled:text-gray-500"
+            >
+              {stores.map(s => (
+                <option key={s.id} value={s.id}>{s.storeName}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => loadStock(selectedStoreId)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 font-bold text-xs flex items-center justify-center space-x-1.5 transition"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingStock ? 'animate-spin' : ''}`} />
+              <span>Làm mới</span>
+            </button>
+          </div>
+
+          {stockFetchError && (
+            <div className="px-4 py-2.5 bg-red-50 border border-red-100 text-red-700 rounded-lg text-xs font-semibold">
+              {stockFetchError}
+            </div>
+          )}
+
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5" id="warehouse-overview-cards">
             
@@ -261,8 +342,8 @@ export default function WarehouseManagement({
               </div>
               <div className="text-xs">
                 <span className="block text-gray-500 font-medium">Tổng sản phẩm kinh doanh</span>
-                <span className="text-base font-black text-gray-950 font-mono mt-0.5 block">{totalDistinctProducts} danh mục SKU</span>
-                <span className="text-[10px] text-gray-400 font-medium mt-1 block">Tập trung chủ yếu thực phẩm khô & tiêu dùng</span>
+                <span className="text-base font-black text-gray-950 font-mono mt-0.5 block">{isLoadingStock ? '—' : `${totalDistinctProducts} danh mục SKU`}</span>
+                <span className="text-[10px] text-gray-400 font-medium mt-1 block">Tại chi nhánh đang chọn</span>
               </div>
             </div>
 
@@ -278,11 +359,11 @@ export default function WarehouseManagement({
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div className="text-xs">
-                <span className="block text-gray-500 font-medium">Sản phẩm sắp hết ({'< 10'})</span>
+                <span className="block text-gray-500 font-medium">Sản phẩm sắp hết</span>
                 <span className={`text-base font-black font-mono mt-0.5 block ${lowStockCount > 0 ? 'text-red-600 font-black animate-pulse' : 'text-gray-950'}`}>
-                  {lowStockCount} SKU cần gom hàng
+                  {isLoadingStock ? '—' : `${lowStockCount} SKU cần gom hàng`}
                 </span>
-                <span className="text-[10px] text-gray-400 font-medium mt-1 block">Ngưỡng cảnh báo dưới định mức 10 sp</span>
+                <span className="text-[10px] text-gray-400 font-medium mt-1 block">Dưới ngưỡng cảnh báo riêng từng sản phẩm</span>
               </div>
             </div>
 
@@ -356,10 +437,19 @@ export default function WarehouseManagement({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-150/40 font-medium text-gray-700">
-                  {filteredProducts.map(p => {
-                    // Status logic: Đủ hàng (stock >= 10), Sắp hết (stock > 0 and stock < 10), Hết hàng (stock === 0)
-                    const isOutOfStock = p.stock === 0;
-                    const isLowStock = p.stock > 0 && p.stock < 10;
+                  {isLoadingStock && (
+                    <tr>
+                      <td colSpan={7} className="py-16 text-center text-gray-400">
+                        <RefreshCw className="w-6 h-6 text-gray-300 mx-auto stroke-1 mb-2 animate-spin" />
+                        <p className="text-xs font-bold">Đang tải tồn kho...</p>
+                      </td>
+                    </tr>
+                  )}
+
+                  {!isLoadingStock && filteredProducts.map(item => {
+                    // Status logic theo ngưỡng riêng của từng sản phẩm (lowStockThreshold)
+                    const isOutOfStock = item.quantity === 0;
+                    const isLowStock = item.quantity > 0 && item.quantity < item.lowStockThreshold;
                     
                     let badgeClass = "bg-emerald-50 text-emerald-700 border-emerald-100";
                     let statusLabel = "Đủ hàng";
@@ -373,20 +463,20 @@ export default function WarehouseManagement({
 
                     return (
                       <tr 
-                        key={p.productId} 
+                        key={item.id} 
                         className={`hover:bg-gray-50/40 transition-colors ${
                           isLowStock ? 'bg-amber-50/20' : isOutOfStock ? 'bg-red-50/10' : ''
                         }`}
                       >
                         
                         {/* SKU ID */}
-                        <td className="px-5 py-3.5 font-bold font-mono text-gray-950 text-xs">{p.productId}</td>
+                        <td className="px-5 py-3.5 font-bold font-mono text-gray-950 text-xs">{item.sku}</td>
 
                         {/* Product Name */}
-                        <td className="px-5 py-3.5 text-gray-950 font-bold text-xs">{p.productName}</td>
+                        <td className="px-5 py-3.5 text-gray-950 font-bold text-xs">{item.productName}</td>
 
                         {/* Category */}
-                        <td className="px-5 py-3.5 text-gray-500 font-semibold">{p.category}</td>
+                        <td className="px-5 py-3.5 text-gray-500 font-semibold">{item.categoryName || '—'}</td>
 
                         {/* Stock amount with highlighted warnings */}
                         <td className="px-5 py-3.5 text-center">
@@ -397,12 +487,12 @@ export default function WarehouseManagement({
                               ? 'text-amber-700 bg-amber-100 font-extrabold' 
                               : 'text-gray-900'
                           }`}>
-                            {p.stock}
+                            {item.quantity}
                           </span>
                         </td>
 
                         {/* Constant/Required Warning Threshold */}
-                        <td className="px-5 py-3.5 text-center font-bold font-mono text-gray-400">10 sp</td>
+                        <td className="px-5 py-3.5 text-center font-bold font-mono text-gray-400">{item.lowStockThreshold} sp</td>
 
                         {/* Color-Coded badges */}
                         <td className="px-5 py-3.5 text-center">
@@ -414,7 +504,7 @@ export default function WarehouseManagement({
                         {/* Action buttons */}
                         <td className="px-5 py-3.5 text-right">
                           <button
-                            onClick={() => handleOpenEditStock(p)}
+                            onClick={() => handleOpenEditStock(item)}
                             className="px-2.5 py-1 text-[10px] font-bold border border-gray-200 hover:border-[#3B82F6] hover:text-[#3B82F6] rounded bg-white text-gray-700 transition flex items-center justify-center space-x-1"
                           >
                             <Edit className="w-3 h-3" />
@@ -426,7 +516,7 @@ export default function WarehouseManagement({
                     );
                   })}
 
-                  {filteredProducts.length === 0 && (
+                  {!isLoadingStock && filteredProducts.length === 0 && (
                     <tr>
                       <td colSpan={7} className="py-16 text-center text-gray-400">
                         <Boxes className="w-8 h-8 text-gray-300 mx-auto stroke-1 mb-2 animate-bounce" />
@@ -442,6 +532,7 @@ export default function WarehouseManagement({
 
         </div>
       )}
+
 
       {/* ================= VIEW 2: ĐƠN NHẬP HÀNG ================= */}
       {activeTab === 'Đơn nhập hàng' && (() => {
@@ -931,7 +1022,7 @@ export default function WarehouseManagement({
       })()}
 
       {/* ================= MODAL DIALOG: CẬP NHẬT TỒN KHO THỰC TẾ ================= */}
-      {editingProduct && (
+      {editingStockItem && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="relative bg-white max-w-sm w-full rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-scaleIn text-xs">
             
@@ -942,7 +1033,7 @@ export default function WarehouseManagement({
                 <p className="text-[10px] text-gray-400 mt-1">Cập nhật khẩn cấp tồn kho cho sản phẩm này</p>
               </div>
               <button 
-                onClick={() => setEditingProduct(null)}
+                onClick={() => setEditingStockItem(null)}
                 className="p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-700 rounded-full transition"
               >
                 <X className="w-4 h-4" />
@@ -954,8 +1045,8 @@ export default function WarehouseManagement({
               
               <div className="p-3 bg-gray-50 rounded-lg space-y-1">
                 <span className="block text-[10px] text-gray-400 font-bold uppercase">Sản phẩm điều chỉnh</span>
-                <span className="font-bold text-gray-900 text-xs block">{editingProduct.productName}</span>
-                <span className="text-[10px] text-gray-400 font-mono block">Mã: {editingProduct.productId} &bull; Ngành: {editingProduct.category}</span>
+                <span className="font-bold text-gray-900 text-xs block">{editingStockItem.productName}</span>
+                <span className="text-[10px] text-gray-400 font-mono block">Mã: {editingStockItem.sku} &bull; Ngành: {editingStockItem.categoryName || '—'}</span>
               </div>
 
               <div className="space-y-1">
@@ -975,16 +1066,17 @@ export default function WarehouseManagement({
               <div className="flex justify-end space-x-2 pt-3 border-t border-gray-100">
                 <button
                   type="button"
-                  onClick={() => setEditingProduct(null)}
+                  onClick={() => setEditingStockItem(null)}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-bold transition"
                 >
                   Hủy bỏ
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#3B82F6] hover:bg-blue-600 font-bold text-white rounded-lg transition"
+                  disabled={isSavingStock}
+                  className="px-5 py-2 bg-[#3B82F6] hover:bg-blue-600 font-bold text-white rounded-lg transition disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  Lưu thay đổi
+                  {isSavingStock ? 'Đang lưu...' : 'Lưu thay đổi'}
                 </button>
               </div>
 

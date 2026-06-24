@@ -1,121 +1,109 @@
-// backend/src/controllers/inventoryController.ts
-
 import { Request, Response } from 'express';
-import { InventoryService, InventoryServiceError } from '../services/InventoryService';
-import { Product } from '../models';
-import { Store } from '../models';
+import InventoryService, { InventoryError } from '../services/inventoryService';
 
 /**
  * GET /api/inventory?storeId=
- * Xem tồn kho theo chi nhánh (CD-04, UC-02).
+ * - Manager: phải truyền storeId (xem tồn kho theo từng chi nhánh cụ thể)
+ * - WarehouseStaff: luôn bị ép về storeId của chính mình (req.user.storeId),
+ *   bỏ qua query param nếu có truyền khác — tránh xem chéo tồn kho chi nhánh khác.
  */
-export async function getInventoryByStore(req: Request, res: Response) {
+export const getInventoryByStore = async (req: Request, res: Response) => {
   try {
-    const { storeId } = req.query;
-    if (!storeId || typeof storeId !== 'string') {
-      return res.status(400).json({ message: 'Thiếu hoặc sai tham số storeId' });
+    let storeId = req.query.storeId as string | undefined;
+
+    if (req.user?.role === 'WarehouseStaff') {
+      storeId = req.user.storeId ?? undefined;
     }
 
-    const records = await InventoryService.getStockByStore(storeId);
+    if (!storeId) {
+      return res.status(400).json({ message: 'storeId là bắt buộc' });
+    }
 
-    // Đính kèm thông tin sản phẩm để hiển thị trên UI Quản lý kho
-    const data = await Promise.all(
-      records.map(async (r) => {
-        const product = await Product.findByPk(r.productId);
-        return {
-          productId: r.productId,
-          productName: product?.get('productName'),
-          sku: product?.get('sku'),
-          storeId: r.storeId,
-          quantity: r.quantity,
-          lowStockThreshold: r.lowStockThreshold,
-          lastUpdated: r.lastUpdated,
-        };
-      })
-    );
-
-    return res.json({ data });
+    const data = await InventoryService.getStockByStore(storeId);
+    return res.json(data);
   } catch (err) {
-    return handleError(res, err);
+    if (err instanceof InventoryError) {
+      return res.status(err.status).json({ message: err.message });
+    }
+    return res.status(500).json({ message: 'Lỗi server', error: (err as Error).message });
   }
-}
+};
 
 /**
- * GET /api/inventory/low-stock
- * Sản phẩm sắp hết — dùng cho dashboard.
- * Query param tùy chọn: storeId
+ * GET /api/inventory/low-stock?storeId=
+ * - storeId optional với Manager (không truyền = quét toàn hệ thống, dùng cho dashboard)
+ * - WarehouseStaff luôn bị ép về storeId của chính mình
  */
-export async function getLowStockProducts(req: Request, res: Response) {
+export const getLowStockProducts = async (req: Request, res: Response) => {
   try {
-    const storeId = typeof req.query.storeId === 'string' ? req.query.storeId : undefined;
-    const records = await InventoryService.checkLowStock(storeId);
+    let storeId = req.query.storeId as string | undefined;
 
-    const data = await Promise.all(
-      records.map(async (r) => {
-        const [product, store] = await Promise.all([
-          Product.findByPk(r.productId),
-          Store.findByPk(r.storeId),
-        ]);
-        return {
-          productId: r.productId,
-          productName: product?.get('productName'),
-          sku: product?.get('sku'),
-          storeId: r.storeId,
-          storeName: store?.get('storeName'),
-          quantity: r.quantity,
-          lowStockThreshold: r.lowStockThreshold,
-        };
-      })
-    );
+    if (req.user?.role === 'WarehouseStaff') {
+      storeId = req.user.storeId ?? undefined;
+    }
 
-    return res.json({ data });
+    const data = await InventoryService.checkLowStock(storeId);
+    return res.json(data);
   } catch (err) {
-    return handleError(res, err);
+    if (err instanceof InventoryError) {
+      return res.status(err.status).json({ message: err.message });
+    }
+    return res.status(500).json({ message: 'Lỗi server', error: (err as Error).message });
   }
-}
+};
 
 /**
- * PATCH /api/inventory
- * Body: { storeId, productId, quantity, mode }
- * mode: 'increase' | 'decrease'
+ * PUT /api/inventory/:productId
+ * Body: { storeId, quantity }  — đặt tồn kho về một số TUYỆT ĐỐI
+ * (dùng cho màn "Điều chỉnh số lượng kho" / nút "Cập nhật" trong WarehouseManagement).
  *
- * Expose InventoryService.updateInventory ra ngoài — entry point DÙNG CHUNG
- * (Schema.md §5). Chỉ WarehouseStaff được gọi trực tiếp qua UI Quản lý kho
- * (roleMiddleware(['WarehouseStaff']) áp ở route).
+ * Quan trọng: vẫn KHÔNG tạo signature mới ở service layer. Controller tự tính
+ * delta = quantity_mới - quantity_hiện_tại, rồi gọi InventoryService.updateInventory()
+ * — method DUY NHẤT được phép thay đổi tồn kho (Schema.md mục 5).
  */
-export async function updateInventory(req: Request, res: Response) {
+export const setInventoryQuantity = async (req: Request, res: Response) => {
   try {
-    const { storeId, productId, quantity, mode } = req.body;
+    const { productId } = req.params;
+    let { storeId, quantity } = req.body as { storeId?: string; quantity?: number };
 
-    if (!storeId || !productId || !quantity || !mode) {
-      return res.status(400).json({ message: 'Thiếu storeId, productId, quantity hoặc mode' });
+    if (req.user?.role === 'WarehouseStaff') {
+      storeId = req.user.storeId ?? undefined;
     }
 
-    const record = await InventoryService.updateInventory(
-      storeId,
-      productId,
-      Number(quantity),
-      mode
-    );
+    if (!storeId) {
+      return res.status(400).json({ message: 'storeId là bắt buộc' });
+    }
 
-    return res.json({
-      data: {
-        productId: record.productId,
-        storeId: record.storeId,
-        quantity: record.quantity,
-        lowStockThreshold: record.lowStockThreshold,
-        lastUpdated: record.lastUpdated,
-      },
-    });
+    const targetQty = Number(quantity);
+    if (!Number.isFinite(targetQty) || targetQty < 0 || !Number.isInteger(targetQty)) {
+      return res.status(400).json({ message: 'quantity phải là số nguyên không âm' });
+    }
+
+    const current = await InventoryService.getInventoryRecord(storeId, productId as string);
+    const currentQty = current?.quantity ?? 0;
+    const delta = targetQty - currentQty;
+
+    let result;
+    if (delta > 0) {
+      result = await InventoryService.updateInventory(storeId, productId as string, delta, 'increase');
+    } else if (delta < 0) {
+      result = await InventoryService.updateInventory(storeId, productId as string, Math.abs(delta), 'decrease');
+    } else {
+      // Không có thay đổi thực tế — trả lại bản ghi hiện có (hoặc 0 nếu chưa từng tồn tại)
+      result = current ?? {
+        storeId,
+        productId,
+        quantity: 0,
+        lowStockThreshold: 10,
+        lastUpdated: new Date(),
+      };
+    }
+
+    return res.json(result);
   } catch (err) {
-    return handleError(res, err);
+    if (err instanceof InventoryError) {
+      return res.status(err.status).json({ message: err.message });
+    }
+    return res.status(500).json({ message: 'Lỗi server', error: (err as Error).message });
   }
-}
-
-function handleError(res: Response, err: unknown) {
-  if (err instanceof InventoryServiceError) {
-    return res.status(err.statusCode).json({ message: err.message });
-  }
-  console.error('[InventoryController]', err);
-  return res.status(500).json({ message: 'Lỗi hệ thống' });
-}
+};

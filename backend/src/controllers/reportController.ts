@@ -1,48 +1,44 @@
-// backend/src/controllers/reportController.ts
-
 import { Request, Response } from 'express';
-import { ReportService, DateRangeError } from '../services/ReportService';
+import ReportService from '../services/reportService';
 
 /**
- * GET /api/reports/revenue?startDate=&endDate=&storeId=
+ * GET /api/report/revenue?startDate=&endDate=&storeId=
+ * Validate: startDate <= endDate, ngược lại trả "Khoảng thời gian không hợp lệ"
  */
-export async function getRevenueReport(req: Request, res: Response) {
+export const getRevenueReport = async (req: Request, res: Response) => {
   try {
     const { startDate, endDate, storeId } = req.query;
 
-    const report = await ReportService.getRevenueReport(
-      startDate,
-      endDate,
-      typeof storeId === 'string' ? storeId : undefined
-    );
+    if (!startDate || !endDate) {
+      return res.status(400).json({ message: 'startDate và endDate là bắt buộc' });
+    }
 
-    return res.json({ data: report });
+    const start = new Date(startDate as string);
+    const end = new Date(endDate as string);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+      return res.status(400).json({ message: 'Khoảng thời gian không hợp lệ' });
+    }
+
+    // Bao gồm toàn bộ ngày kết thúc (đến 23:59:59.999)
+    end.setHours(23, 59, 59, 999);
+
+    const report = await ReportService.getRevenueReport(start, end, storeId as string | undefined);
+    return res.json(report);
   } catch (err) {
-    return handleError(res, err);
+    return res.status(500).json({ message: 'Lỗi server', error: (err as Error).message });
   }
-}
+};
 
 /**
- * GET /api/reports/inventory?storeId=
+ * GET /api/report/inventory?storeId=
  */
-export async function getInventoryReport(req: Request, res: Response) {
+export const getInventoryReport = async (req: Request, res: Response) => {
   try {
     const { storeId } = req.query;
-
-    const report = await ReportService.getInventoryReport(
-      typeof storeId === 'string' ? storeId : undefined
-    );
-
-    return res.json({ data: report });
+    const report = await ReportService.getInventoryReport(storeId as string | undefined);
+    return res.json(report);
   } catch (err) {
-    return handleError(res, err);
+    return res.status(500).json({ message: 'Lỗi server', error: (err as Error).message });
   }
-}
-
-function handleError(res: Response, err: unknown) {
-  if (err instanceof DateRangeError) {
-    return res.status(400).json({ message: err.message });
-  }
-  console.error('[ReportController]', err);
-  return res.status(500).json({ message: 'Lỗi hệ thống' });
-}
+};

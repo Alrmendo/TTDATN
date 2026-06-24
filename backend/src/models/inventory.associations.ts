@@ -8,7 +8,7 @@
 // hãy chuyển đoạn này vào đó thay vì giữ file riêng, để tránh associate()
 // bị gọi 2 lần (Sequelize sẽ throw lỗi nếu khai báo lặp).
 
-import { Inventory } from './Inventory';
+import {Inventory} from './inventory.model';
 import { Store } from './store.model';
 import { Product } from './product.model';
 
