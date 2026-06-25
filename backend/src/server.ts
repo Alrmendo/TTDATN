@@ -29,6 +29,9 @@ app.use('/api/invoices', orderRoutes);
 import customerRoutes from './routes/customer.routes';
 app.use('/api/customers', customerRoutes);
 
+import loyaltyPointRoutes from './routes/loyaltyPointRoutes';
+app.use('/api/loyalty-points', loyaltyPointRoutes);
+
 import productRoutes from './routes/product.routes';
 app.use('/api/products', productRoutes);
 
