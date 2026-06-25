@@ -18,6 +18,11 @@ import {
   AlertCircle,
   PiggyBank
 } from 'lucide-react';
+import {
+  getPromotions,
+  createPromotion,
+  deactivatePromotion
+} from '../services/promotion.service';
 
 interface PromotionManagementProps {
   promotions: Promotion[];
@@ -30,12 +35,41 @@ export default function PromotionManagement({
 }: PromotionManagementProps) {
   
   // Localized promotion state to allow instant reactive edits/disabling
-  const [localPromotions, setLocalPromotions] = useState<Promotion[]>(promotions);
+  const [localPromotions, setLocalPromotions] = useState<Promotion[]>([]);
 
-  // Synchronize local state with props updates
+  const loadPromotions = async () => {
+    const data = await getPromotions();
+
+    const mapped = data.map((p: any) => ({
+      id: p.id,
+      name: p.name,
+
+      type:
+        p.type === 'percentage'
+          ? 'Phần trăm'
+          : 'Giảm tiền mặt',
+
+      value: Number(p.value),
+
+      minSpend: p.minOrderValue,
+
+      startDate: p.startDate.split('T')[0],
+      endDate: p.endDate.split('T')[0],
+
+      status:
+        !p.isActive
+          ? 'Vô hiệu hóa'
+          : new Date(p.endDate) < new Date()
+            ? 'Hết hạn'
+            : 'Đang áp dụng'
+    }));
+
+    setLocalPromotions(mapped);
+  };
+
   useEffect(() => {
-    setLocalPromotions(promotions);
-  }, [promotions]);
+    loadPromotions();
+  }, []);
 
   // Search & Filters state
   const [searchTerm, setSearchTerm] = useState('');
@@ -109,7 +143,7 @@ export default function PromotionManagement({
   // ------------------ BUSINESS CODE LOGICS ------------------
 
   // Submit adding new Promotion
-  const handleAddNewPromotionSubmit = (e: FormEvent) => {
+  const handleAddNewPromotionSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || newValue <= 0 || !newStartDate || !newEndDate) {
       alert('Vui lòng điền đầy đủ dữ liệu cấu hình chương trình!');
@@ -117,18 +151,25 @@ export default function PromotionManagement({
     }
 
     const newId = `KM${String(localPromotions.length + 1).padStart(3, '0')}`;
-    const newPromoObj: Promotion = {
-      id: newId,
-      name: newName.trim(),
-      type: newType,
-      value: Number(newValue),
-      minSpend: Number(newMinSpend),
-      startDate: newStartDate,
-      endDate: newEndDate,
-      status: newStatus
-    };
 
-    onAddPromotion(newPromoObj);
+    try {
+      await createPromotion({
+        name: newName.trim(),
+        type: newType === 'Phần trăm'
+          ? 'percentage'
+          : 'fixed',
+        value: Number(newValue),
+        minOrderValue: Number(newMinSpend),
+        startDate: newStartDate,
+        endDate: newEndDate,
+      });
+
+      await loadPromotions();
+    } catch (err) {
+      console.error(err);
+      alert('Tạo khuyến mãi thất bại');
+      return;
+    }
     
     // Reset forms
     setNewName('');
@@ -187,15 +228,19 @@ export default function PromotionManagement({
   };
 
   // Disable (Vô hiệu hóa) handler
-  const handleDisablePromo = (pId: string) => {
-    const updated = localPromotions.map(p => {
-      if (p.id === pId) {
-        return { ...p, status: 'Vô hiệu hóa' };
-      }
-      return p;
-    });
-    setLocalPromotions(updated);
-    triggerToast(`Đã áp dụng vô hiệu hóa mã khuyến mãi ${pId}!`);
+  const handleDisablePromo = async (pId: string) => {
+    try {
+      await deactivatePromotion(pId);
+
+      await loadPromotions();
+
+      triggerToast(
+        `Đã áp dụng vô hiệu hóa mã khuyến mãi ${pId}!`
+      );
+    } catch (err) {
+      console.error(err);
+      alert('Vô hiệu hóa thất bại');
+    }
   };
 
   // Format Helper for Promo Value column
@@ -416,9 +461,9 @@ export default function PromotionManagement({
                         
                         {/* Edit Button */}
                         <button
-                          onClick={() => handleOpenEditPromoModal(p)}
-                          className="px-2 py-1 text-[10px] font-extrabold border border-gray-200 hover:border-[#3B82F6] hover:text-[#3B82F6] rounded bg-white text-gray-700 transition flex items-center space-x-0.5"
-                          title="Sửa chương trình"
+                          disabled
+                          className="px-2 py-1 text-[10px] font-extrabold border border-gray-200 rounded bg-white text-gray-300 cursor-not-allowed flex items-center space-x-0.5"
+                          title="Chức năng sửa khuyến mãi chưa được hỗ trợ — vui lòng vô hiệu hóa và tạo lại chương trình mới"
                         >
                           <Edit className="w-3 h-3" />
                           <span>Sửa</span>
