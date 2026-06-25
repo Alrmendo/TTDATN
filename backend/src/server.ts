@@ -32,6 +32,9 @@ app.use('/api/customers', customerRoutes);
 import productRoutes from './routes/product.routes';
 app.use('/api/products', productRoutes);
 
+import loyaltyPointRoutes from './routes/loyaltyPointRoutes';
+app.use('/api/loyalty-points', loyaltyPointRoutes);
+
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
