@@ -176,7 +176,12 @@ export class OrderService {
 
   /**
    * Tính lại subtotal/totalAmount của hóa đơn từ tổng invoice_details.subtotal
-   * — gọi lại sau mỗi addItem (Schema.md §13).
+   * — gọi lại sau mỗi addItem/removeItem (Schema.md §13).
+   *
+   * Guard: nếu hóa đơn đã áp khuyến mãi (promotionId != null hoặc
+   * discountAmount > 0), giỏ hàng vừa thay đổi nên discount cũ không còn
+   * hợp lệ với subtotal mới — clear về 0 và bắt nhân viên applyPromotion
+   * lại từ đầu, tránh treo discountAmount cũ làm sai totalAmount.
    */
   private static async recalculateSubtotal(invoiceId: string): Promise<void> {
     const invoice = await Invoice.findByPk(invoiceId);
@@ -186,7 +191,15 @@ export class OrderService {
     const subtotal = details.reduce((sum, d) => sum + Number(d.subtotal), 0);
 
     invoice.subtotal = subtotal;
-    invoice.totalAmount = subtotal - Number(invoice.discountAmount);
+
+    if (invoice.promotionId !== null || Number(invoice.discountAmount) > 0) {
+      invoice.promotionId = null;
+      invoice.discountAmount = 0;
+      invoice.totalAmount = subtotal;
+    } else {
+      invoice.totalAmount = subtotal - Number(invoice.discountAmount);
+    }
+
     await invoice.save();
   }
 }
