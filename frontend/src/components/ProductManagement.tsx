@@ -82,9 +82,7 @@ export default function ProductManagement({ products, categories, onAddProduct, 
     e.preventDefault();
     if (!name.trim() || price <= 0 || cost <= 0) return;
 
-    const newId = `SP0${products.length + 1}`;
     onAddProduct({
-      productId: newId,
       productName: name,
       categoryId: categoryId,
       category: categories.find(c => c.id === categoryId)?.categoryName ?? '',

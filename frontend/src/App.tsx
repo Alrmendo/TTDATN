@@ -222,7 +222,6 @@ export default function App() {
   ) => {
     await createProduct({
       productName: product.productName,
-      sku: product.productId,
       categoryId: product.categoryId,
       price: product.price,
       costPrice: product.cost,
