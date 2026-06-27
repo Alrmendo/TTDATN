@@ -31,9 +31,23 @@ export const createPromotion = async (
 export const deactivatePromotion = async (
   id: string
 ) => {
+  const res = await axios.delete(
+    `${API_URL}/${id}`,
+    {
+      headers: authHeader(),
+    }
+  );
+
+  return res.data;
+};
+
+export const updatePromotion = async (
+  id: string,
+  data: unknown
+) => {
   const res = await axios.put(
     `${API_URL}/${id}`,
-    {},
+    data,
     {
       headers: authHeader(),
     }

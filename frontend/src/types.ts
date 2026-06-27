@@ -1,5 +1,6 @@
 export interface Product {
   productId: string;
+  sku: string;
   productName: string;
   category: string;
   categoryId: string;

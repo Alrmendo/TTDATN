@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Op, fn, col, where as sequelizeWhere } from 'sequelize';
+import { Op, fn, col, where as sequelizeWhere, UniqueConstraintError } from 'sequelize';
 import { Product, Category } from '../models';
 
 export const searchProducts = async (req: Request, res: Response): Promise<void> => {
@@ -24,7 +24,7 @@ export const searchProducts = async (req: Request, res: Response): Promise<void>
     const products = await Product.findAll({
       where,
       include: [{ model: Category, as: 'category', attributes: ['categoryName'] }],
-      order: [['productName', 'ASC']],
+      order: [['sku', 'ASC']],
     });
 
     res.status(200).json(products);
@@ -46,13 +46,33 @@ export const getProducts = async (
           attributes: ['categoryName'],
         },
       ],
-      order: [['productName', 'ASC']],
+      order: [['sku', 'ASC']],
     });
 
     res.status(200).json(products);
   } catch {
     res.status(500).json({ message: 'Lỗi máy chủ nội bộ' });
   }
+};
+
+const generateSku = async (): Promise<string> => {
+  const lastProduct = await Product.findOne({
+    order: [['sku', 'DESC']],
+    attributes: ['sku'],
+  });
+
+  if (!lastProduct) {
+    return 'SP0001';
+  }
+
+  const lastSku = lastProduct.sku;
+  const nextNumber = parseInt(lastSku.slice(2), 10) + 1;
+
+  if (nextNumber > 9999) {
+    throw new Error('Đã hết mã SKU');
+  }
+
+  return `SP${nextNumber.toString().padStart(4, '0')}`;
 };
 
 export const createProduct = async (
@@ -62,12 +82,13 @@ export const createProduct = async (
   try {
     const {
       productName,
-      sku,
       categoryId,
       description,
       price,
       costPrice,
     } = req.body;
+
+    const sku = await generateSku();
 
     const product = await Product.create({
       productName,
@@ -79,8 +100,18 @@ export const createProduct = async (
     });
 
     res.status(201).json(product);
-  } catch {
-    res.status(500).json({ message: 'Lỗi máy chủ nội bộ' });
+  } catch (error) {
+
+    if (error instanceof UniqueConstraintError) {
+      res.status(409).json({
+        message: 'SKU đã tồn tại',
+      });
+      return;
+    }
+
+    res.status(500).json({
+      message: 'Lỗi máy chủ nội bộ',
+    });
   }
 };
 

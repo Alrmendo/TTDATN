@@ -21,7 +21,8 @@ import {
 import {
   getPromotions,
   createPromotion,
-  deactivatePromotion
+  deactivatePromotion,
+  updatePromotion
 } from '../services/promotion.service';
 
 interface PromotionManagementProps {
@@ -196,8 +197,8 @@ export default function PromotionManagement({
     setEditStatus(p.status);
   };
 
-  // Save edits locally
-  const handleSaveEditPromoSubmit = (e: FormEvent) => {
+  // Save edits
+  const handleSaveEditPromoSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!editingPromo) return;
 
@@ -206,25 +207,29 @@ export default function PromotionManagement({
       return;
     }
 
-    const updated = localPromotions.map(p => {
-      if (p.id === editingPromo.id) {
-        return {
-          ...p,
-          name: editName.trim(),
-          type: editType,
-          value: Number(editValue),
-          minSpend: Number(editMinSpend),
-          startDate: editStartDate,
-          endDate: editEndDate,
-          status: editStatus
-        };
-      }
-      return p;
-    });
+    try {
+      await updatePromotion(editingPromo.id, {
+        name: editName.trim(),
+        type: editType === 'Phần trăm'
+          ? 'percentage'
+          : 'fixed',
+        value: Number(editValue),
+        minOrderValue: Number(editMinSpend),
+        startDate: editStartDate,
+        endDate: editEndDate,
+      });
 
-    setLocalPromotions(updated);
-    setEditingPromo(null);
-    triggerToast(`Đã cập nhật chương trình ưu đãi ${editingPromo.id} thành công!`);
+      await loadPromotions();
+
+      setEditingPromo(null);
+
+      triggerToast(
+        `Đã cập nhật chương trình ưu đãi ${editingPromo.id} thành công!`
+      );
+    } catch (err) {
+      console.error(err);
+      alert('Cập nhật khuyến mãi thất bại');
+    }
   };
 
   // Disable (Vô hiệu hóa) handler
@@ -461,12 +466,12 @@ export default function PromotionManagement({
                         
                         {/* Edit Button */}
                         <button
-                          disabled
-                          className="px-2 py-1 text-[10px] font-extrabold border border-gray-200 rounded bg-white text-gray-300 cursor-not-allowed flex items-center space-x-0.5"
-                          title="Chức năng sửa khuyến mãi chưa được hỗ trợ — vui lòng vô hiệu hóa và tạo lại chương trình mới"
+                            onClick={() => handleOpenEditPromoModal(p)}
+                            className="px-2 py-1 text-[10px] font-extrabold border border-blue-100 hover:bg-blue-50 text-blue-600 rounded bg-white transition flex items-center space-x-0.5"
+                            title="Chỉnh sửa"
                         >
-                          <Edit className="w-3 h-3" />
-                          <span>Sửa</span>
+                            <Edit className="w-3 h-3" />
+                            <span>Sửa</span>
                         </button>
 
                         {/* Disable Toggle Button */}

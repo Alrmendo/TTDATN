@@ -168,6 +168,7 @@ export default function App() {
     setProducts(
       data.map((p: any) => ({
         productId: p.id,
+        sku: p.sku,
         productName: p.productName,
         categoryId: p.categoryId,
         category: p.category?.categoryName ?? '',
@@ -203,6 +204,7 @@ export default function App() {
     setProducts(
       data.map((p) => ({
         productId: p.id,
+        sku: p.sku,
         productName: p.productName,
         categoryId: p.categoryId,
         category: p.category?.categoryName ?? '',
@@ -222,7 +224,6 @@ export default function App() {
   ) => {
     await createProduct({
       productName: product.productName,
-      sku: product.productId,
       categoryId: product.categoryId,
       price: product.price,
       costPrice: product.cost,
