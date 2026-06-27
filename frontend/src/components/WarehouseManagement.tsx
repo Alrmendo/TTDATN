@@ -194,6 +194,7 @@ export default function WarehouseManagement({
       const params = new URLSearchParams();
       const apiStatus = STATUS_MAP_REVERSE[poStatusFilter];
       if (apiStatus) params.set('status', apiStatus);
+      if (poSearch.trim()) params.set('search', poSearch.trim());
       const res = await fetch(`${API}/api/purchase-orders?${params}`, { headers: authHeaders() });
       if (!res.ok) throw new Error((await res.json()).message ?? 'Lỗi tải dữ liệu');
       setApiOrders(await res.json());
@@ -202,7 +203,7 @@ export default function WarehouseManagement({
     } finally {
       setApiLoading(false);
     }
-  }, [activeTab, poStatusFilter]);
+  }, [activeTab, poStatusFilter, poSearch]);
 
   useEffect(() => { fetchOrders(); fetchSuppliers(); }, [fetchOrders]);
 
@@ -441,14 +442,7 @@ export default function WarehouseManagement({
   };
 
   // ─── Computed filtered PO list ───────────────────────────────────────────────
-  const filteredPOList = apiOrders.filter(po => {
-    const label = STATUS_MAP[po.status] ?? po.status;
-    const matchesSearch =
-      po.id.toLowerCase().includes(poSearch.toLowerCase()) ||
-      (po.Supplier?.supplierName ?? '').toLowerCase().includes(poSearch.toLowerCase());
-    const matchesStatus = poStatusFilter === 'Tất cả' || label === poStatusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredPOList = apiOrders;
 
   const totalPOItems = filteredPOList.length;
   const totalPOPages = Math.ceil(totalPOItems / poItemsPerPage) || 1;
@@ -639,6 +633,7 @@ export default function WarehouseManagement({
                   type="text"
                   value={poSearch}
                   onChange={(e) => setPoSearch(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') fetchOrders(); }}
                   placeholder="Tìm theo mã đơn hoặc nhà cung cấp"
                   className="pl-9 pr-4 py-2 w-full border border-gray-300 rounded-lg bg-gray-50/50 text-gray-900 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition outline-none text-xs"
                 />
