@@ -421,7 +421,7 @@ export default function ProductManagement({ products, categories, onAddProduct, 
                 const isUnderStock = p.stock <= 5;
                 return (
                   <tr key={p.productId} className="hover:bg-gray-50/70 transition" id={`row-sp-${p.productId}`}>
-                    <td className="px-5 py-3.5 text-[#3B82F6] font-bold font-mono text-[11px]">{p.productId}</td>
+                    <td className="px-5 py-3.5 text-[#3B82F6] font-bold font-mono text-[11px]">{p.sku}</td>
                     <td className="px-5 py-3.5 text-gray-950 font-bold">
                       <div className="flex flex-col">
                         <span>{p.productName}</span>

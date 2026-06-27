@@ -24,7 +24,7 @@ export const searchProducts = async (req: Request, res: Response): Promise<void>
     const products = await Product.findAll({
       where,
       include: [{ model: Category, as: 'category', attributes: ['categoryName'] }],
-      order: [['productName', 'ASC']],
+      order: [['sku', 'ASC']],
     });
 
     res.status(200).json(products);
@@ -46,7 +46,7 @@ export const getProducts = async (
           attributes: ['categoryName'],
         },
       ],
-      order: [['productName', 'ASC']],
+      order: [['sku', 'ASC']],
     });
 
     res.status(200).json(products);
