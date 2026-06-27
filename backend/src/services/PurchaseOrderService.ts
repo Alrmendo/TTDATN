@@ -95,6 +95,8 @@ export class PurchaseOrderService {
   /**
    * Lấy danh sách đơn nhập hàng với filter.
    * Manager thấy tất cả store, WarehouseStaff chỉ thấy store của mình.
+   * search: ILIKE trên supplierName — filter qua WHERE clause trên bảng Supplier.
+   * Dùng Op.iLike thay vì where trực tiếp trên order vì supplierName nằm ở bảng liên kết.
    */
   static async getPurchaseOrders(params: {
     storeId?: string;
@@ -109,16 +111,29 @@ export class PurchaseOrderService {
     if (params.status) where.status = params.status;
 
     if (params.startDate || params.endDate) {
-      const range: Record<string, Date> = {};
-      if (params.startDate) range[Op.gte as unknown as string] = new Date(params.startDate);
-      if (params.endDate) range[Op.lte as unknown as string] = new Date(params.endDate);
+      const range: Record<symbol, Date> = {};
+      if (params.startDate) range[Op.gte] = new Date(params.startDate);
+      if (params.endDate) range[Op.lte] = new Date(params.endDate);
       (where as any).createdAt = range;
+    }
+
+    // Build Supplier include — thêm where ILIKE nếu có search
+    const supplierInclude: Record<string, unknown> = {
+      model: Supplier,
+      attributes: ['id', 'supplierName', 'contactInfo'],
+    };
+    if (params.search && params.search.trim()) {
+      supplierInclude.where = {
+        supplierName: { [Op.iLike]: `%${params.search.trim()}%` },
+      };
+      // required: true → INNER JOIN, chỉ trả về orders có supplier khớp search
+      supplierInclude.required = true;
     }
 
     return PurchaseOrder.findAll({
       where,
       include: [
-        { model: Supplier, attributes: ['id', 'supplierName', 'contactInfo'] },
+        supplierInclude,
         { model: Store, attributes: ['id', 'storeName'] },
         {
           model: User,
