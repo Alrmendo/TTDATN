@@ -779,11 +779,7 @@ export default function App() {
                     />
                   )}
                   {activeTab === 'Chi nhánh' && (
-                    <StoreManagement 
-                      stores={initialStores} 
-                      employees={employees}
-                      invoices={invoices}
-                    />
+                    <StoreManagement userRole={userRole} />
                   )}
                   {activeTab === 'Tài khoản' && (
                     <AccountManagement 
