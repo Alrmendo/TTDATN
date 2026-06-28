@@ -1,24 +1,90 @@
-import { useState, FormEvent, useEffect } from 'react';
+import { useState, FormEvent, useEffect, useCallback } from 'react';
 import { Product, PurchaseOrder, Store } from '../types';
 import { fetchStockByStore, setInventoryQuantity, ApiStockItem } from '../services/inventoryApi';
-import { 
-  Boxes, 
-  AlertTriangle, 
-  FileText, 
-  CheckCircle2, 
-  Search, 
-  Edit, 
-  RefreshCw, 
-  ArrowLeftRight, 
-  X, 
-  Plus, 
-  TrendingUp, 
-  Check, 
-  ShoppingBag, 
+import {
+  Boxes,
+  AlertTriangle,
+  FileText,
+  CheckCircle2,
+  Search,
+  Edit,
+  RefreshCw,
+  ArrowLeftRight,
+  X,
+  Plus,
+  TrendingUp,
+  Check,
+  ShoppingBag,
   Truck,
   Building,
-  Calendar
+  Calendar,
+  Loader2
 } from 'lucide-react';
+
+// ─── API helpers (Đơn nhập hàng) ───────────────────────────────────────────────
+
+const API = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:5000';
+
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+// ─── API Types (Đơn nhập hàng) ─────────────────────────────────────────────────
+
+interface ApiSupplier {
+  id: string;
+  supplierName: string;
+  contactInfo: string | null;
+}
+
+interface ApiStore {
+  id: string;
+  storeName: string;
+}
+
+interface ApiProduct {
+  id: string;
+  productName: string;
+  sku: string;
+  costPrice: string | null;
+}
+
+interface ApiOrderDetail {
+  id: string;
+  productId: string;
+  quantity: number;
+  receivedQuantity: number | null;
+  unitCost: string;
+  product: { id: string; productName: string; sku: string };
+}
+
+interface ApiPurchaseOrder {
+  id: string;
+  supplierId: string;
+  storeId: string;
+  status: 'pending' | 'completed' | 'cancelled';
+  totalCost: string;
+  createdBy: string;
+  confirmedBy: string | null;
+  createdAt: string;
+  confirmedAt: string | null;
+  Supplier?: ApiSupplier;
+  Store?: { id: string; storeName: string };
+  creator?: { id: string; fullName: string };
+  confirmer?: { id: string; fullName: string } | null;
+  details?: ApiOrderDetail[];
+}
+
+interface ReceivedItem {
+  productId: string;
+  receivedQuantity: number;
+}
+
+// ─── Original component props ─────────────────────────────────────────────────
 
 interface WarehouseManagementProps {
   products: Product[];
@@ -45,7 +111,8 @@ export default function WarehouseManagement({
   currentUserStoreId = null
 }: WarehouseManagementProps) {
 
-  const isWarehouseStaff = userRole === 'Nhân viên kho';
+  const isManager = userRole === 'Quản lý';
+  const isWarehouseStaff = userRole === 'Nhân viên kho' || userRole === 'WarehouseStaff';
 
   // ===== Tồn kho thực (API) =====
   const [selectedStoreId, setSelectedStoreId] = useState<string>(
@@ -103,40 +170,252 @@ export default function WarehouseManagement({
   const [selectedTransfer, setSelectedTransfer] = useState<any | null>(null);
   const [isCreatingTransfer, setIsCreatingTransfer] = useState(false);
 
-  // Create Purchase Order form state
-  const [poSupplier, setPoSupplier] = useState('Công ty Thực phẩm Masan');
-  const [poBranch, setPoBranch] = useState('Chi nhánh Quận 1');
-  const [poProduct, setPoProduct] = useState(products[0]?.productId || '');
-  const [poQty, setPoQty] = useState(50);
-  const [poCost, setPoCost] = useState(150000);
-  const [isCreatingPO, setIsCreatingPO] = useState(false);
-
   // Toast / Notification status
   const [notification, setNotification] = useState<string | null>(null);
 
-  // States for PO (Purchase Order) tracking/searching/filtering/paging
+  // ─── Đơn nhập hàng — API state ──────────────────────────────────────────────
+  const [apiOrders, setApiOrders] = useState<ApiPurchaseOrder[]>([]);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
+
+  // Filter / pagination
   const [poSearch, setPoSearch] = useState('');
   const [poStatusFilter, setPoStatusFilter] = useState<'Tất cả' | 'Chờ xác nhận' | 'Hoàn thành' | 'Đã hủy'>('Tất cả');
   const [poCurrentPage, setPoCurrentPage] = useState(1);
   const poItemsPerPage = 5;
-  const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+
+  // Detail modal
+  const [selectedPO, setSelectedPO] = useState<ApiPurchaseOrder | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [receivedItems, setReceivedItems] = useState<ReceivedItem[]>([]);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [confirmError, setConfirmError] = useState('');
+
+  // Create PO modal (Manager)
+  const [isCreatingPO, setIsCreatingPO] = useState(false);
+  const [apiStores, setApiStores] = useState<ApiStore[]>([]);
+  const [suppliersLoading, setSuppliersLoading] = useState(false);
+  const [newSupplierId, setNewSupplierId] = useState('');
+  const [newStoreId, setNewStoreId] = useState('');
+  const [cart, setCart] = useState<{ productId: string; productName: string; sku: string; quantity: number; unitCost: number }[]>([]);
+  const [productSearch, setProductSearch] = useState('');
+  const [productResults, setProductResults] = useState<ApiProduct[]>([]);
+  const [productSearchLoading, setProductSearchLoading] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+
+  // status map API → UI
+  const STATUS_MAP: Record<string, string> = {
+    pending: 'Chờ xác nhận',
+    completed: 'Hoàn thành',
+    cancelled: 'Đã hủy',
+  };
+  const STATUS_MAP_REVERSE: Record<string, string> = {
+    'Chờ xác nhận': 'pending',
+    'Hoàn thành': 'completed',
+    'Đã hủy': 'cancelled',
+    'Tất cả': '',
+  };
+
+  // ─── Fetch orders ────────────────────────────────────────────────────────────
+  const fetchOrders = useCallback(async () => {
+    if (activeTab !== 'Đơn nhập hàng') return;
+    setApiLoading(true);
+    setApiError('');
+    try {
+      const params = new URLSearchParams();
+      const apiStatus = STATUS_MAP_REVERSE[poStatusFilter];
+      if (apiStatus) params.set('status', apiStatus);
+      if (poSearch.trim()) params.set('search', poSearch.trim());
+      const res = await fetch(`${API}/api/purchase-orders?${params}`, { headers: authHeaders() });
+      if (!res.ok) throw new Error((await res.json()).message ?? 'Lỗi tải dữ liệu');
+      setApiOrders(await res.json());
+    } catch (e) {
+      setApiError(e instanceof Error ? e.message : 'Lỗi kết nối server');
+    } finally {
+      setApiLoading(false);
+    }
+  }, [activeTab, poStatusFilter, poSearch]);
+
+  useEffect(() => { fetchOrders(); fetchSuppliers(); }, [fetchOrders]);
+
+  useEffect(() => { setPoCurrentPage(1); }, [poSearch, poStatusFilter]);
+
+  useEffect(() => {
+    setTransferCurrentPage(1);
+  }, [transferStatusFilter]);
+
+  // ─── Fetch stores (Manager) ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isManager) return;
+    fetch(`${API}/api/stores`, { headers: authHeaders() })
+      .then(r => r.json()).then(setApiStores).catch(() => {});
+  }, [isManager]);
+
+  // ─── Product search (create modal) ──────────────────────────────────────────
+  useEffect(() => {
+    if (!productSearch.trim()) { setProductResults([]); return; }
+    const t = setTimeout(async () => {
+      setProductSearchLoading(true);
+      try {
+        const res = await fetch(`${API}/api/products/search?q=${encodeURIComponent(productSearch)}`, { headers: authHeaders() });
+        if (res.ok) setProductResults(await res.json());
+      } finally { setProductSearchLoading(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [productSearch]);
+
+  // ─── Open detail modal ───────────────────────────────────────────────────────
+  const openDetail = async (order: ApiPurchaseOrder) => {
+    setSelectedPO(order);
+    setConfirmError('');
+    setDetailLoading(true);
+    try {
+      const res = await fetch(`${API}/api/purchase-orders/${order.id}`, { headers: authHeaders() });
+      if (!res.ok) throw new Error();
+      const full: ApiPurchaseOrder = await res.json();
+      setSelectedPO(full);
+      setReceivedItems(
+        (full.details ?? []).map(d => ({
+          productId: d.productId,
+          receivedQuantity: d.receivedQuantity ?? d.quantity,
+        }))
+      );
+    } catch {
+      setConfirmError('Không tải được chi tiết đơn');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeDetail = () => {
+    setSelectedPO(null);
+    setReceivedItems([]);
+    setConfirmError('');
+  };
+
+  // ─── Confirm receipt ─────────────────────────────────────────────────────────
+  const handleConfirm = async () => {
+    if (!selectedPO) return;
+    setConfirmLoading(true);
+    setConfirmError('');
+    try {
+      const res = await fetch(`${API}/api/purchase-orders/${selectedPO.id}/confirm`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ receivedItems }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message ?? 'Xác nhận thất bại');
+      }
+      closeDetail();
+      triggerNotification('Đã xác nhận nhận hàng và cập nhật tồn kho thành công!');
+      fetchOrders();
+    } catch (e) {
+      setConfirmError(e instanceof Error ? e.message : 'Lỗi không xác định');
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  // ─── Cancel order (Manager) ──────────────────────────────────────────────────
+  const handleCancelOrder = async (orderId: string) => {
+    if (!confirm('Xác nhận huỷ đơn nhập hàng này?')) return;
+    try {
+      const res = await fetch(`${API}/api/purchase-orders/${orderId}/cancel`, {
+        method: 'PUT', headers: authHeaders(),
+      });
+      if (!res.ok) { alert((await res.json()).message ?? 'Huỷ đơn thất bại'); return; }
+      triggerNotification('Đã huỷ đơn nhập hàng thành công!');
+      fetchOrders();
+    } catch { alert('Lỗi kết nối server'); }
+  };
+
+  const fetchSuppliers = async () => {
+    try {
+      const res = await fetch(
+        `${API}/api/suppliers`,
+        {
+          headers: authHeaders(),
+        }
+      );
+
+      if (!res.ok) {
+        throw new Error('Không tải được danh sách nhà cung cấp');
+      }
+
+      const data = await res.json();
+
+      setSuppliers(data.data ?? []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // ─── Open create modal ───────────────────────────────────────────────────────
+  const openCreate = async () => {
+    setIsCreatingPO(true);
+    setCart([]);
+    setNewSupplierId('');
+    setNewStoreId('');
+    setCreateError('');
+    setSuppliersLoading(true);
+    try {
+      await fetchSuppliers();
+    } finally { setSuppliersLoading(false); }
+  };
+
+  // ─── Submit create order ─────────────────────────────────────────────────────
+  const handleCreatePO = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!newSupplierId) { setCreateError('Chọn nhà cung cấp'); return; }
+    if (!newStoreId) { setCreateError('Chọn chi nhánh'); return; }
+    if (cart.length === 0) { setCreateError('Thêm ít nhất 1 sản phẩm'); return; }
+    setCreateLoading(true);
+    setCreateError('');
+    try {
+      const res = await fetch(`${API}/api/purchase-orders`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          supplierId: newSupplierId,
+          storeId: newStoreId,
+          items: cart.map(c => ({ productId: c.productId, quantity: c.quantity, unitCost: c.unitCost })),
+        }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.message ?? 'Tạo đơn thất bại'); }
+      setIsCreatingPO(false);
+      setCart([]);
+      triggerNotification('Đã tạo đơn nhập hàng thành công!');
+      fetchOrders();
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Lỗi không xác định');
+    } finally { setCreateLoading(false); }
+  };
+
+  // ─── Cart helpers ────────────────────────────────────────────────────────────
+  const addToCart = (p: ApiProduct) => {
+    setCart(prev => prev.find(c => c.productId === p.id) ? prev : [
+      ...prev,
+      { productId: p.id, productName: p.productName, sku: p.sku, quantity: 1, unitCost: p.costPrice ? parseFloat(p.costPrice) : 0 }
+    ]);
+    setProductSearch(''); setProductResults([]);
+  };
+
+  // ─── Original helpers ─────────────────────────────────────────────────────────
 
   const triggerNotification = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3000);
   };
 
-  useEffect(() => {
-    setPoCurrentPage(1);
-  }, [poSearch, poStatusFilter]);
+  const formatVND = (num: number | string) =>
+    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(num));
 
-  useEffect(() => {
-    setTransferCurrentPage(1);
-  }, [transferStatusFilter]);
-
-  const formatVND = (num: number) => {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
-  };
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
 
   // ------------------ DATA CALCULATION FOR METRICS (Tồn kho — dữ liệu API theo chi nhánh) ------------------
   // Total distinct products đang có bản ghi tồn kho tại chi nhánh đang chọn
@@ -146,8 +425,8 @@ export default function WarehouseManagement({
   const lowStockProducts = apiStock.filter(item => item.quantity < item.lowStockThreshold);
   const lowStockCount = lowStockProducts.length;
 
-  // Pending purchase orders count
-  const pendingOrdersCount = purchaseOrders.filter(po => po.status === 'Chờ xác nhận').length;
+  // Pending purchase orders count (lấy từ đơn nhập hàng thực — API)
+  const pendingOrdersCount = apiOrders.filter(o => o.status === 'pending').length;
 
   // Filtered Products for the Tồn kho grid
   const filteredProducts = apiStock.filter(item => {
@@ -189,40 +468,6 @@ export default function WarehouseManagement({
     setEditingStockItem(item);
     setNewStockVal(item.quantity);
   };
-
-  // Handle local purchase order addition
-  const handleCreateNewPurchaseOrder = (e: FormEvent) => {
-    e.preventDefault();
-    const targetProd = products.find(p => p.productId === poProduct);
-    if (!targetProd) return;
-
-    // find storeId corresponding to poBranch
-    const matchedStore = stores.find(s => s.storeName === poBranch);
-    const storeId = matchedStore ? matchedStore.id : 'CH001';
-
-    // generate simple incremental PO id
-    const newId = `PO${String(purchaseOrders.length + 1).padStart(3, '0')}`;
-    const newPO: PurchaseOrder = {
-      orderId: newId,
-      supplierName: poSupplier,
-      storeId: storeId,
-      storeName: poBranch,
-      totalCost: poQty * poCost,
-      date: '2026-05-20 14:25',
-      status: 'Chờ xác nhận'
-    };
-
-    if (onAddNewPurchaseOrder) {
-      onAddNewPurchaseOrder(newPO);
-    } else {
-      // fallback alert if not wired
-      purchaseOrders.unshift(newPO);
-    }
-
-    setIsCreatingPO(false);
-    triggerNotification(`Đã tạo đơn yêu cầu nhập hàng ${newId} thành công (Chờ thủ kho duyệt nhập)!`);
-  };
-
 
   // Handle custom branch stock transfers
   const handleCreateTransfer = (e: FormEvent) => {
@@ -272,6 +517,25 @@ export default function WarehouseManagement({
     }
   };
 
+  // ─── Computed: Đơn nhập hàng (lọc/sắp xếp đã thực hiện ở server qua fetchOrders) ──
+  const filteredPOList = apiOrders;
+  const totalPOItems = filteredPOList.length;
+  const totalPOPages = Math.ceil(totalPOItems / poItemsPerPage) || 1;
+  const indexOfLastPOItem = poCurrentPage * poItemsPerPage;
+  const indexOfFirstPOItem = indexOfLastPOItem - poItemsPerPage;
+  const currentPOItems = filteredPOList.slice(indexOfFirstPOItem, indexOfLastPOItem);
+
+  // ─── Computed: Điều chuyển hàng ──────────────────────────────────────────────
+  const filteredTransfers = transfers.filter(tr => {
+    const matchesStatus = transferStatusFilter === 'Tất cả' || tr.status === transferStatusFilter;
+    return matchesStatus;
+  });
+  const totalTrItems = filteredTransfers.length;
+  const totalTrPages = Math.ceil(totalTrItems / transferItemsPerPage) || 1;
+  const indexOfLastTrItem = transferCurrentPage * transferItemsPerPage;
+  const indexOfFirstTrItem = indexOfLastTrItem - transferItemsPerPage;
+  const currentTransfersList = filteredTransfers.slice(indexOfFirstTrItem, indexOfLastTrItem);
+
   return (
     <div className="space-y-6">
       
@@ -299,7 +563,7 @@ export default function WarehouseManagement({
         )}
       </div>
 
-      {/* ================= VIEW 1: TỒN KHO ================= */}
+      {/* ================= VIEW 1: TỒN KHO (API) ================= */}
       {activeTab === 'Tồn kho' && (
         <div className="space-y-6 animate-fadeIn">
 
@@ -533,493 +797,394 @@ export default function WarehouseManagement({
         </div>
       )}
 
+      {/* ================= VIEW 2: ĐƠN NHẬP HÀNG (API) ================= */}
+      {activeTab === 'Đơn nhập hàng' && (
+        <div className="space-y-6 animate-fadeIn text-xs">
 
-      {/* ================= VIEW 2: ĐƠN NHẬP HÀNG ================= */}
-      {activeTab === 'Đơn nhập hàng' && (() => {
-        // Compute filtered PO list based on searched query and selected status filter
-        const filteredPOList = purchaseOrders.filter(po => {
-          const matchesSearch = po.orderId.toLowerCase().includes(poSearch.toLowerCase()) ||
-                               po.supplierName.toLowerCase().includes(poSearch.toLowerCase());
-          
-          let poStatusVisual = po.status === 'Đã nhập kho' ? 'Hoàn thành' : po.status;
-          const matchesStatus = poStatusFilter === 'Tất cả' || poStatusVisual === poStatusFilter;
-          
-          return matchesSearch && matchesStatus;
-        });
-
-        // Compute pagination
-        const totalPOItems = filteredPOList.length;
-        const totalPOPages = Math.ceil(totalPOItems / poItemsPerPage) || 1;
-        const indexOfLastPOItem = poCurrentPage * poItemsPerPage;
-        const indexOfFirstPOItem = indexOfLastPOItem - poItemsPerPage;
-        const currentPOItems = filteredPOList.slice(indexOfFirstPOItem, indexOfLastPOItem);
-
-        const isManager = userRole === 'Quản lý';
-
-        return (
-          <div className="space-y-6 animate-fadeIn text-xs">
-            
-            {/* Header Title Information */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between pb-2 border-b border-gray-200 gap-2">
-              <div>
-                <h2 className="text-xl font-bold text-gray-950 font-sans tracking-tight">Đơn nhập hàng</h2>
-                <p className="text-xs text-gray-400 mt-1">Quản lý và ký nhận các lô hàng vận chuyển từ các nhà phân phối và nhà cung cấp đối tác.</p>
-              </div>
+          {/* Header */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between pb-2 border-b border-gray-200 gap-2">
+            <div>
+              <h2 className="text-xl font-bold text-gray-950 font-sans tracking-tight">Đơn nhập hàng</h2>
+              <p className="text-xs text-gray-400 mt-1">Quản lý và ký nhận các lô hàng vận chuyển từ các nhà phân phối và nhà cung cấp đối tác.</p>
             </div>
-
-            {/* Top Action Bar */}
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-3xs flex flex-col md:flex-row items-center justify-between gap-4">
-              
-              {/* Search & Filter controls */}
-              <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
-                
-                {/* Search Input */}
-                <div className="relative w-full sm:w-64">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                  <input
-                    type="text"
-                    value={poSearch}
-                    onChange={(e) => setPoSearch(e.target.value)}
-                    placeholder="Tìm theo mã đơn hoặc nhà cung cấp"
-                    className="pl-9 pr-4 py-2 w-full border border-gray-300 rounded-lg bg-gray-50/50 text-gray-900 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition outline-none text-xs"
-                  />
-                </div>
-
-                {/* Status Filter */}
-                <div className="flex items-center space-x-2 w-full sm:w-auto">
-                  <span className="text-gray-500 font-bold whitespace-nowrap">Trạng thái:</span>
-                  <select
-                    value={poStatusFilter}
-                    onChange={(e) => setPoStatusFilter(e.target.value as any)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-xs font-semibold"
-                  >
-                    <option value="Tất cả">Tất cả</option>
-                    <option value="Chờ xác nhận">Chờ xác nhận</option>
-                    <option value="Hoàn thành">Hoàn thành</option>
-                    <option value="Đã hủy">Đã hủy</option>
-                  </select>
-                </div>
-
-              </div>
-
-              {/* Action Button: Tạo đơn nhập hàng */}
-              <div className="w-full md:w-auto text-right">
-                <button
-                  type="button"
-                  disabled={!isManager}
-                  onClick={() => setIsCreatingPO(true)}
-                  className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg text-xs font-extrabold transition uppercase tracking-wider ${
-                    isManager 
-                      ? 'bg-[#3B82F6] hover:bg-blue-600 text-white cursor-pointer shadow-xs shadow-blue-500/10' 
-                      : 'bg-gray-150 text-gray-400 cursor-not-allowed border border-gray-200'
-                  }`}
-                  title={!isManager ? 'Chỉ Quản lý mới có quyền tạo đơn nhập hàng mới' : 'Tạo đơn nhập hàng mới'}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Tạo đơn nhập hàng</span>
-                  {!isManager && <span className="text-[9px] font-normal lowercase bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded ml-1">Quản lý</span>}
-                </button>
-              </div>
-
-            </div>
-
-            {/* Table or Data Grid block */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-3xs overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50/70 border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
-                      <th className="py-3 px-4 font-black">Mã đơn</th>
-                      <th className="py-3 px-4 font-black">Nhà cung cấp</th>
-                      <th className="py-3 px-4 font-black">Chi nhánh</th>
-                      <th className="py-3 px-4 font-black">Ngày tạo</th>
-                      <th className="py-3 px-4 font-black">Tổng tiền</th>
-                      <th className="py-3 px-4 font-black">Trạng thái</th>
-                      <th className="py-3 px-4 font-black text-right">Hành động</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-150">
-                    {currentPOItems.map((po) => {
-                      const isPending = po.status === 'Chờ xác nhận';
-                      const isCancelled = po.status === 'Đã hủy';
-                      const isCompleted = po.status === 'Đã nhập kho';
-
-                      return (
-                        <tr key={po.orderId} className="hover:bg-gray-50/50 transition">
-                          {/* Mã đơn */}
-                          <td className="py-3.5 px-4 font-bold text-[#3B82F6] font-mono text-xs">
-                            {po.orderId}
-                          </td>
-
-                          {/* Nhà cung cấp */}
-                          <td className="py-3.5 px-4 font-bold text-gray-900">
-                            {po.supplierName}
-                          </td>
-
-                          {/* Chi nhánh */}
-                          <td className="py-3.5 px-4 text-gray-600 font-medium font-semibold">
-                            {po.storeName}
-                          </td>
-
-                          {/* Ngày tạo */}
-                          <td className="py-3.5 px-4 text-gray-500 font-mono">
-                            {po.date}
-                          </td>
-
-                          {/* Tổng tiền */}
-                          <td className="py-3.5 px-4 font-bold text-gray-950 font-mono">
-                            {formatVND(po.totalCost)}
-                          </td>
-
-                          {/* Trạng thái */}
-                          <td className="py-3.5 px-4">
-                            {isPending && (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-orange-850 border border-orange-200 shadow-2xs">
-                                <span className="w-1.5 h-1.5 rounded-full bg-orange-600 mr-1.5 animate-pulse"></span>
-                                Chờ xác nhận
-                              </span>
-                            )}
-                            {isCompleted && (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-850 border border-emerald-250 shadow-2xs">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-650 mr-1.5"></span>
-                                Hoàn thành
-                              </span>
-                            )}
-                            {isCancelled && (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-850 border border-red-250">
-                                <span className="w-1.5 h-1.5 rounded-full bg-red-600 mr-1.5"></span>
-                                Đã hủy
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Hành động */}
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="inline-flex items-center justify-end gap-2">
-                              
-                              {/* Xác nhận nhận hàng */}
-                              {isPending && (
-                                <button
-                                  type="button"
-                                  onClick={() => onConfirmPurchaseOrder(po.orderId)}
-                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition shadow-3xs flex items-center space-x-1"
-                                >
-                                  <Check className="w-3.5 h-3.5" />
-                                  <span>Xác nhận nhận hàng</span>
-                                </button>
-                              )}
-
-                              {/* Xem chi tiết */}
-                              <button
-                                type="button"
-                                onClick={() => setSelectedPO(po)}
-                                className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-[11px] font-bold transition"
-                              >
-                                Xem chi tiết
-                              </button>
-
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                    {currentPOItems.length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="py-12 bg-white text-center text-gray-400 font-bold">
-                          <Truck className="w-10 h-10 text-gray-300 mx-auto stroke-1 mb-2" />
-                          <p className="text-xs font-bold text-gray-500">Không tìm thấy yêu cầu nhập hàng nào.</p>
-                          <p className="text-[10px] text-gray-400 font-normal mt-1">Điều chỉnh bộ lọc hoặc từ khóa tìm kiếm để kiểm định lại.</p>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination footer */}
-              {totalPOItems > 0 && (
-                <div className="bg-gray-50 border-t border-gray-200 px-4 py-3.5 flex items-center justify-between">
-                  <div className="text-gray-500 font-semibold text-[11px]">
-                    Hiển thị <span className="font-bold text-gray-900">{indexOfFirstPOItem + 1}</span> - <span className="font-bold text-gray-900">{Math.min(indexOfLastPOItem, totalPOItems)}</span> trong số <span className="font-bold text-gray-900">{totalPOItems}</span> đơn nhập hàng
-                  </div>
-                  
-                  <div className="flex items-center space-x-1.5">
-                    {/* Quay lại button */}
-                    <button
-                      type="button"
-                      disabled={poCurrentPage === 1}
-                      onClick={() => setPoCurrentPage(prev => Math.max(1, prev - 1))}
-                      className="px-3 py-1.5 border border-gray-300 text-gray-750 font-bold rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-transparent transition text-[11px] cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      Quay lại
-                    </button>
-
-                    {/* Page indexes */}
-                    {Array.from({ length: totalPOPages }, (_, i) => i + 1).map((pageNum) => (
-                      <button
-                        key={pageNum}
-                        type="button"
-                        onClick={() => setPoCurrentPage(pageNum)}
-                        className={`w-7.5 h-7.5 flex items-center justify-center font-bold text-xs rounded-lg transition ${
-                          poCurrentPage === pageNum 
-                            ? 'bg-[#3B82F6] text-white' 
-                            : 'border border-gray-300 text-gray-750 hover:bg-gray-50'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    ))}
-
-                    {/* Tiếp theo button */}
-                    <button
-                      type="button"
-                      disabled={poCurrentPage === totalPOPages}
-                      onClick={() => setPoCurrentPage(prev => Math.min(totalPOPages, prev + 1))}
-                      className="px-3 py-1.5 border border-gray-300 text-gray-750 font-bold rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-transparent transition text-[11px] cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      Tiếp theo
-                    </button>
-
-                  </div>
-                </div>
-              )}
-            </div>
-
           </div>
-        );
-      })()}
 
-      {/* ================= VIEW 3: ĐIỀU CHUYỂN HÀNG ================= */}
-      {activeTab === 'Điều chuyển hàng' && (() => {
-        // Filter transfers based on status dropdown
-        const filteredTransfers = transfers.filter(tr => {
-          const matchesStatus = transferStatusFilter === 'Tất cả' || tr.status === transferStatusFilter;
-          return matchesStatus;
-        });
+          {/* API Error */}
+          {apiError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs font-medium">{apiError}</div>
+          )}
 
-        // Compute pagination calculations
-        const totalTrItems = filteredTransfers.length;
-        const totalTrPages = Math.ceil(totalTrItems / transferItemsPerPage) || 1;
-        const indexOfLastTrItem = transferCurrentPage * transferItemsPerPage;
-        const indexOfFirstTrItem = indexOfLastTrItem - transferItemsPerPage;
-        const currentTransfersList = filteredTransfers.slice(indexOfFirstTrItem, indexOfLastTrItem);
-
-        const isManager = userRole === 'Quản lý';
-
-        return (
-          <div className="space-y-6 animate-fadeIn text-xs">
-            
-            {/* Header Title Section */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between pb-2 border-b border-gray-200 gap-2">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 font-sans tracking-tight">Điều chuyển hàng giữa chi nhánh</h2>
-                <p className="text-xs text-gray-400 mt-1">Quản lý, cấp lệnh và ký nhận vận chuyển hàng hóa nội bộ giữa các chi nhánh siêu thị.</p>
+          {/* Top Action Bar */}
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-3xs flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={poSearch}
+                  onChange={(e) => setPoSearch(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') fetchOrders(); }}
+                  placeholder="Tìm theo mã đơn hoặc nhà cung cấp"
+                  className="pl-9 pr-4 py-2 w-full border border-gray-300 rounded-lg bg-gray-50/50 text-gray-900 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition outline-none text-xs"
+                />
               </div>
-            </div>
-
-            {/* Top Action Bar */}
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-3xs flex flex-col md:flex-row items-center justify-between gap-4">
-              
-              {/* Status Filter */}
-              <div className="flex items-center space-x-2 w-full md:w-auto">
+              <div className="flex items-center space-x-2 w-full sm:w-auto">
                 <span className="text-gray-500 font-bold whitespace-nowrap">Trạng thái:</span>
-                <select
-                  value={transferStatusFilter}
-                  onChange={(e) => setTransferStatusFilter(e.target.value as any)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-xs font-semibold"
-                >
+                <select value={poStatusFilter} onChange={(e) => setPoStatusFilter(e.target.value as any)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-xs font-semibold">
                   <option value="Tất cả">Tất cả</option>
                   <option value="Chờ xác nhận">Chờ xác nhận</option>
                   <option value="Hoàn thành">Hoàn thành</option>
+                  <option value="Đã hủy">Đã hủy</option>
                 </select>
               </div>
-
-              {/* Action Button: Tạo yêu cầu điều chuyển */}
-              <div className="w-full md:w-auto text-right">
-                <button
-                  type="button"
-                  disabled={!isManager}
-                  onClick={() => setIsCreatingTransfer(true)}
-                  className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg text-xs font-extrabold transition uppercase tracking-wider ${
-                    isManager 
-                      ? 'bg-[#3B82F6] hover:bg-blue-600 text-white cursor-pointer shadow-xs shadow-blue-500/10' 
-                      : 'bg-gray-150 text-gray-400 cursor-not-allowed border border-gray-200'
-                  }`}
-                  title={!isManager ? 'Chỉ Quản lý mới có quyền tạo lệnh điều chuyển mới' : 'Lập lệnh điều chuyển nội bộ'}
-                >
-                  <ArrowLeftRight className="w-4 h-4" />
-                  <span>Tạo yêu cầu điều chuyển</span>
-                  {!isManager && <span className="text-[9px] font-normal lowercase bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded ml-1">Quản lý</span>}
-                </button>
-              </div>
-
             </div>
+            <div className="w-full md:w-auto text-right">
+              <button
+                type="button"
+                disabled={!isManager}
+                onClick={openCreate}
+                className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg text-xs font-extrabold transition uppercase tracking-wider ${isManager ? 'bg-[#3B82F6] hover:bg-blue-600 text-white cursor-pointer shadow-xs shadow-blue-500/10' : 'bg-gray-150 text-gray-400 cursor-not-allowed border border-gray-200'}`}
+                title={!isManager ? 'Chỉ Quản lý mới có quyền tạo đơn nhập hàng mới' : 'Tạo đơn nhập hàng mới'}
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tạo đơn nhập hàng</span>
+                {!isManager && <span className="text-[9px] font-normal lowercase bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded ml-1">Quản lý</span>}
+              </button>
+            </div>
+          </div>
 
-            {/* Table or Data Grid block */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-3xs overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50/70 border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
-                      <th className="py-3 px-4 font-black">Mã phiếu</th>
-                      <th className="py-3 px-4 font-black">Từ chi nhánh</th>
-                      <th className="py-3 px-4 font-black">Đến chi nhánh</th>
-                      <th className="py-3 px-4 font-black">Sản phẩm</th>
-                      <th className="py-3 px-4 font-black">Số lượng</th>
-                      <th className="py-3 px-4 font-black">Ngày tạo</th>
-                      <th className="py-3 px-4 font-black">Trạng thái</th>
-                      <th className="py-3 px-4 font-black text-right">Hành động</th>
+          {/* Table */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-3xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50/70 border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
+                    <th className="py-3 px-4 font-black">Mã đơn</th>
+                    <th className="py-3 px-4 font-black">Nhà cung cấp</th>
+                    <th className="py-3 px-4 font-black">Chi nhánh</th>
+                    <th className="py-3 px-4 font-black">Ngày tạo</th>
+                    <th className="py-3 px-4 font-black">Tổng tiền</th>
+                    <th className="py-3 px-4 font-black">Trạng thái</th>
+                    <th className="py-3 px-4 font-black text-right">Hành động</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-150">
+                  {apiLoading ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-gray-400">
+                        <Loader2 className="w-6 h-6 text-gray-300 mx-auto mb-2 animate-spin" />
+                        <p className="text-xs font-bold">Đang tải dữ liệu...</p>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-150">
-                    {currentTransfersList.map((tr) => {
-                      const isPending = tr.status === 'Chờ xác nhận';
-                      const isCompleted = tr.status === 'Hoàn thành';
-
-                      return (
-                        <tr key={tr.id} className="hover:bg-gray-50/50 transition">
-                          {/* Mã phiếu */}
-                          <td className="py-3.5 px-4 font-bold text-[#3B82F6] font-mono text-xs">
-                            {tr.id}
-                          </td>
-
-                          {/* Từ chi nhánh */}
-                          <td className="py-3.5 px-4 font-semibold text-gray-900">
-                            {tr.from}
-                          </td>
-
-                          {/* Đến chi nhánh */}
-                          <td className="py-3.5 px-4 font-semibold text-gray-900">
-                            {tr.to}
-                          </td>
-
-                          {/* Sản phẩm */}
-                          <td className="py-3.5 px-4 text-gray-650 font-bold">
-                            {tr.product}
-                          </td>
-
-                          {/* Số lượng */}
-                          <td className="py-3.5 px-4 font-bold text-gray-950 font-mono text-xs">
-                            {tr.qty} sp
-                          </td>
-
-                          {/* Ngày tạo */}
-                          <td className="py-3.5 px-4 text-gray-500 font-mono">
-                            {tr.date}
-                          </td>
-
-                          {/* Trạng thái */}
-                          <td className="py-3.5 px-4">
-                            {isPending ? (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-orange-850 border border-orange-200 shadow-2xs">
-                                <span className="w-1.5 h-1.5 rounded-full bg-orange-600 mr-1.5 animate-pulse"></span>
-                                Chờ xác nhận
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-850 border border-emerald-250 shadow-2xs">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-650 mr-1.5"></span>
-                                Hoàn thành
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Hành động */}
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="inline-flex items-center justify-end gap-2">
-                              
-                              {/* Xác nhận nhận hàng */}
-                              {isPending && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleConfirmTransfer(tr.id)}
-                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition shadow-3xs flex items-center space-x-1"
-                                >
-                                  <Check className="w-3.5 h-3.5" />
-                                  <span>Xác nhận nhận hàng</span>
-                                </button>
-                              )}
-
-                              {/* Xem chi tiết */}
+                  ) : currentPOItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 bg-white text-center text-gray-400 font-bold">
+                        <Truck className="w-10 h-10 text-gray-300 mx-auto stroke-1 mb-2" />
+                        <p className="text-xs font-bold text-gray-500">Không tìm thấy yêu cầu nhập hàng nào.</p>
+                        <p className="text-[10px] text-gray-400 font-normal mt-1">Điều chỉnh bộ lọc hoặc từ khóa tìm kiếm để kiểm định lại.</p>
+                      </td>
+                    </tr>
+                  ) : currentPOItems.map((po) => {
+                    const isPending = po.status === 'pending';
+                    const isCompleted = po.status === 'completed';
+                    const isCancelled = po.status === 'cancelled';
+                    return (
+                      <tr key={po.id} className="hover:bg-gray-50/50 transition">
+                        <td className="py-3.5 px-4 font-bold text-[#3B82F6] font-mono text-xs">
+                          {po.id.slice(0, 8)}…
+                        </td>
+                        <td className="py-3.5 px-4 font-bold text-gray-900">{po.Supplier?.supplierName ?? '—'}</td>
+                        <td className="py-3.5 px-4 text-gray-600 font-semibold">{po.Store?.storeName ?? '—'}</td>
+                        <td className="py-3.5 px-4 text-gray-500 font-mono">{fmtDate(po.createdAt)}</td>
+                        <td className="py-3.5 px-4 font-bold text-gray-950 font-mono">{formatVND(po.totalCost)}</td>
+                        <td className="py-3.5 px-4">
+                          {isPending && (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-200 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-600 mr-1.5 animate-pulse"></span>Chờ xác nhận
+                            </span>
+                          )}
+                          {isCompleted && (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mr-1.5"></span>Hoàn thành
+                            </span>
+                          )}
+                          {isCancelled && (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-800 border border-red-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-600 mr-1.5"></span>Đã hủy
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="inline-flex items-center justify-end gap-2">
+                            {/* Nút Xem chi tiết — duy nhất trong cột Hành động */}
+                            <button
+                              type="button"
+                              onClick={() => openDetail(po)}
+                              className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-[11px] font-bold transition"
+                            >
+                              Xem chi tiết
+                            </button>
+                            {/* Manager: nút huỷ đơn pending */}
+                            {isManager && isPending && (
                               <button
                                 type="button"
-                                onClick={() => setSelectedTransfer(tr)}
-                                className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-[11px] font-bold transition"
+                                onClick={() => handleCancelOrder(po.id)}
+                                className="px-3 py-1.5 border border-red-200 hover:bg-red-50 text-red-600 rounded-lg text-[11px] font-bold transition"
                               >
-                                Xem chi tiết
+                                Huỷ đơn
                               </button>
-
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                    {currentTransfersList.length === 0 && (
-                      <tr>
-                        <td colSpan={8} className="py-12 bg-white text-center text-gray-400 font-bold">
-                          <ArrowLeftRight className="w-10 h-10 text-gray-300 mx-auto stroke-1 mb-2 animate-pulse" />
-                          <p className="text-xs font-bold text-gray-500">Không tìm thấy phiếu điều chuyển hàng nào.</p>
-                          <p className="text-[10px] text-gray-400 font-normal mt-1">Kiểm định lại bộ lọc trạng thái để rà soát chứng từ lỗi.</p>
+                            )}
+                          </div>
                         </td>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-              {/* Pagination footer */}
-              {totalTrItems > 0 && (
-                <div className="bg-gray-50 border-t border-gray-200 px-4 py-3.5 flex items-center justify-between">
-                  <div className="text-gray-500 font-semibold text-[11px]">
-                    Hiển thị <span className="font-bold text-gray-900">{indexOfFirstTrItem + 1}</span> - <span className="font-bold text-gray-900">{Math.min(indexOfLastTrItem, totalTrItems)}</span> trong số <span className="font-bold text-gray-900">{totalTrItems}</span> vận đơn chuyển
-                  </div>
-                  
-                  <div className="flex items-center space-x-1.5">
-                    {/* Quay lại button */}
-                    <button
-                      type="button"
-                      disabled={transferCurrentPage === 1}
-                      onClick={() => setTransferCurrentPage(prev => Math.max(1, prev - 1))}
-                      className="px-3 py-1.5 border border-gray-300 text-gray-750 font-bold rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-transparent transition text-[11px] cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      Quay lại
-                    </button>
-
-                    {/* Page indexes */}
-                    {Array.from({ length: totalTrPages }, (_, i) => i + 1).map((pageNum) => (
-                      <button
-                        key={pageNum}
-                        type="button"
-                        onClick={() => setTransferCurrentPage(pageNum)}
-                        className={`w-7.5 h-7.5 flex items-center justify-center font-bold text-xs rounded-lg transition ${
-                          transferCurrentPage === pageNum 
-                            ? 'bg-[#3B82F6] text-white' 
-                            : 'border border-gray-300 text-gray-750 hover:bg-gray-50'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    ))}
-
-                    {/* Tiếp theo button */}
-                    <button
-                      type="button"
-                      disabled={transferCurrentPage === totalTrPages}
-                      onClick={() => setTransferCurrentPage(prev => Math.min(totalTrPages, prev + 1))}
-                      className="px-3 py-1.5 border border-gray-300 text-gray-750 font-bold rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-transparent transition text-[11px] cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      Tiếp theo
-                    </button>
-
-                  </div>
+            {/* Pagination */}
+            {totalPOItems > 0 && (
+              <div className="bg-gray-50 border-t border-gray-200 px-4 py-3.5 flex items-center justify-between">
+                <div className="text-gray-500 font-semibold text-[11px]">
+                  Hiển thị <span className="font-bold text-gray-900">{indexOfFirstPOItem + 1}</span> - <span className="font-bold text-gray-900">{Math.min(indexOfLastPOItem, totalPOItems)}</span> trong số <span className="font-bold text-gray-900">{totalPOItems}</span> đơn nhập hàng
                 </div>
-              )}
+                <div className="flex items-center space-x-1.5">
+                  <button type="button" disabled={poCurrentPage === 1} onClick={() => setPoCurrentPage(p => Math.max(1, p - 1))}
+                    className="px-3 py-1.5 border border-gray-300 text-gray-750 font-bold rounded-lg hover:bg-gray-100 disabled:opacity-50 transition text-[11px] cursor-pointer disabled:cursor-not-allowed">
+                    Quay lại
+                  </button>
+                  {Array.from({ length: totalPOPages }, (_, i) => i + 1).map(n => (
+                    <button key={n} type="button" onClick={() => setPoCurrentPage(n)}
+                      className={`w-7 h-7 flex items-center justify-center font-bold text-xs rounded-lg transition ${poCurrentPage === n ? 'bg-[#3B82F6] text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                      {n}
+                    </button>
+                  ))}
+                  <button type="button" disabled={poCurrentPage === totalPOPages} onClick={() => setPoCurrentPage(p => Math.min(totalPOPages, p + 1))}
+                    className="px-3 py-1.5 border border-gray-300 text-gray-750 font-bold rounded-lg hover:bg-gray-100 disabled:opacity-50 transition text-[11px] cursor-pointer disabled:cursor-not-allowed">
+                    Tiếp theo
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================= VIEW 3: ĐIỀU CHUYỂN HÀNG ================= */}
+      {activeTab === 'Điều chuyển hàng' && (
+        <div className="space-y-6 animate-fadeIn text-xs">
+          
+          {/* Header Title Section */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between pb-2 border-b border-gray-200 gap-2">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 font-sans tracking-tight">Điều chuyển hàng giữa chi nhánh</h2>
+              <p className="text-xs text-gray-400 mt-1">Quản lý, cấp lệnh và ký nhận vận chuyển hàng hóa nội bộ giữa các chi nhánh siêu thị.</p>
+            </div>
+          </div>
+
+          {/* Top Action Bar */}
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-3xs flex flex-col md:flex-row items-center justify-between gap-4">
+            
+            {/* Status Filter */}
+            <div className="flex items-center space-x-2 w-full md:w-auto">
+              <span className="text-gray-500 font-bold whitespace-nowrap">Trạng thái:</span>
+              <select
+                value={transferStatusFilter}
+                onChange={(e) => setTransferStatusFilter(e.target.value as any)}
+                className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-xs font-semibold"
+              >
+                <option value="Tất cả">Tất cả</option>
+                <option value="Chờ xác nhận">Chờ xác nhận</option>
+                <option value="Hoàn thành">Hoàn thành</option>
+              </select>
+            </div>
+
+            {/* Action Button: Tạo yêu cầu điều chuyển */}
+            <div className="w-full md:w-auto text-right">
+              <button
+                type="button"
+                disabled={!isManager}
+                onClick={() => setIsCreatingTransfer(true)}
+                className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg text-xs font-extrabold transition uppercase tracking-wider ${
+                  isManager 
+                    ? 'bg-[#3B82F6] hover:bg-blue-600 text-white cursor-pointer shadow-xs shadow-blue-500/10' 
+                    : 'bg-gray-150 text-gray-400 cursor-not-allowed border border-gray-200'
+                }`}
+                title={!isManager ? 'Chỉ Quản lý mới có quyền tạo yêu cầu điều chuyển' : 'Tạo yêu cầu điều chuyển'}
+              >
+                <ArrowLeftRight className="w-4 h-4" />
+                <span>Tạo yêu cầu điều chuyển</span>
+                {!isManager && <span className="text-[9px] font-normal lowercase bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded ml-1">Quản lý</span>}
+              </button>
             </div>
 
           </div>
-        );
-      })()}
+
+          {/* Table or Data Grid block */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-3xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50/70 border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
+                    <th className="py-3 px-4 font-black">Mã phiếu</th>
+                    <th className="py-3 px-4 font-black">Từ chi nhánh</th>
+                    <th className="py-3 px-4 font-black">Đến chi nhánh</th>
+                    <th className="py-3 px-4 font-black">Sản phẩm</th>
+                    <th className="py-3 px-4 font-black">Số lượng</th>
+                    <th className="py-3 px-4 font-black">Ngày tạo</th>
+                    <th className="py-3 px-4 font-black">Trạng thái</th>
+                    <th className="py-3 px-4 font-black text-right">Hành động</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-150">
+                  {currentTransfersList.map((tr) => {
+                    const isPending = tr.status === 'Chờ xác nhận';
+                    const isCompleted = tr.status === 'Hoàn thành';
+
+                    return (
+                      <tr key={tr.id} className="hover:bg-gray-50/50 transition">
+                        {/* Mã phiếu */}
+                        <td className="py-3.5 px-4 font-bold text-[#3B82F6] font-mono text-xs">
+                          {tr.id}
+                        </td>
+
+                        {/* Từ chi nhánh */}
+                        <td className="py-3.5 px-4 font-semibold text-gray-900">
+                          {tr.from}
+                        </td>
+
+                        {/* Đến chi nhánh */}
+                        <td className="py-3.5 px-4 font-semibold text-gray-900">
+                          {tr.to}
+                        </td>
+
+                        {/* Sản phẩm */}
+                        <td className="py-3.5 px-4 text-gray-650 font-bold">
+                          {tr.product}
+                        </td>
+
+                        {/* Số lượng */}
+                        <td className="py-3.5 px-4 font-bold text-gray-950 font-mono text-xs">
+                          {tr.qty} sp
+                        </td>
+
+                        {/* Ngày tạo */}
+                        <td className="py-3.5 px-4 text-gray-500 font-mono">
+                          {tr.date}
+                        </td>
+
+                        {/* Trạng thái */}
+                        <td className="py-3.5 px-4">
+                          {isPending ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-orange-850 border border-orange-200 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-600 mr-1.5 animate-pulse"></span>
+                              Chờ xác nhận
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-850 border border-emerald-250 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-650 mr-1.5"></span>
+                              Hoàn thành
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Hành động */}
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="inline-flex items-center justify-end gap-2">
+                            
+                            {/* Xác nhận nhận hàng */}
+                            {isPending && (
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmTransfer(tr.id)}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition shadow-3xs flex items-center space-x-1"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Xác nhận nhận hàng</span>
+                              </button>
+                            )}
+
+                            {/* Xem chi tiết */}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedTransfer(tr)}
+                              className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-[11px] font-bold transition"
+                            >
+                              Xem chi tiết
+                            </button>
+
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {currentTransfersList.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-12 bg-white text-center text-gray-400 font-bold">
+                        <ArrowLeftRight className="w-10 h-10 text-gray-300 mx-auto stroke-1 mb-2 animate-pulse" />
+                        <p className="text-xs font-bold text-gray-500">Không tìm thấy phiếu điều chuyển hàng nào.</p>
+                        <p className="text-[10px] text-gray-400 font-normal mt-1">Kiểm định lại bộ lọc trạng thái để rà soát chứng từ lỗi.</p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination footer */}
+            {totalTrItems > 0 && (
+              <div className="bg-gray-50 border-t border-gray-200 px-4 py-3.5 flex items-center justify-between">
+                <div className="text-gray-500 font-semibold text-[11px]">
+                  Hiển thị <span className="font-bold text-gray-900">{indexOfFirstTrItem + 1}</span> - <span className="font-bold text-gray-900">{Math.min(indexOfLastTrItem, totalTrItems)}</span> trong số <span className="font-bold text-gray-900">{totalTrItems}</span> vận đơn chuyển
+                </div>
+                
+                <div className="flex items-center space-x-1.5">
+                  {/* Quay lại button */}
+                  <button
+                    type="button"
+                    disabled={transferCurrentPage === 1}
+                    onClick={() => setTransferCurrentPage(prev => Math.max(1, prev - 1))}
+                    className="px-3 py-1.5 border border-gray-300 text-gray-750 font-bold rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-transparent transition text-[11px] cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    Quay lại
+                  </button>
+
+                  {/* Page indexes */}
+                  {Array.from({ length: totalTrPages }, (_, i) => i + 1).map((pageNum) => (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      onClick={() => setTransferCurrentPage(pageNum)}
+                      className={`w-7.5 h-7.5 flex items-center justify-center font-bold text-xs rounded-lg transition ${
+                        transferCurrentPage === pageNum 
+                          ? 'bg-[#3B82F6] text-white' 
+                          : 'border border-gray-300 text-gray-750 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
+
+                  {/* Tiếp theo button */}
+                  <button
+                    type="button"
+                    disabled={transferCurrentPage === totalTrPages}
+                    onClick={() => setTransferCurrentPage(prev => Math.min(totalTrPages, prev + 1))}
+                    className="px-3 py-1.5 border border-gray-300 text-gray-750 font-bold rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-transparent transition text-[11px] cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    Tiếp theo
+                  </button>
+
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+      )}
 
       {/* ================= MODAL DIALOG: CẬP NHẬT TỒN KHO THỰC TẾ ================= */}
       {editingStockItem && (
@@ -1086,11 +1251,11 @@ export default function WarehouseManagement({
         </div>
       )}
 
-      {/* ================= MODAL DIALOG: CHI TIẾT ĐƠN NHẬP HÀNG ================= */}
+      {/* ================= MODAL: CHI TIẾT ĐƠN NHẬP HÀNG (API) ================= */}
       {selectedPO && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="relative bg-white max-w-lg w-full rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-scaleIn text-xs">
-            
+
             {/* Header */}
             <div className="p-5 border-b border-gray-200 flex items-center justify-between bg-gray-50">
               <div>
@@ -1098,253 +1263,327 @@ export default function WarehouseManagement({
                   <FileText className="w-4 h-4 mr-2 text-[#3B82F6]" />
                   Chi tiết chứng từ đơn nhập hàng
                 </h3>
-                <p className="text-[10px] text-gray-400 mt-0.5 font-medium">Mã đơn hệ thống: <span className="font-mono font-bold text-gray-600">{selectedPO.orderId}</span></p>
+                <p className="text-[10px] text-gray-400 mt-0.5 font-medium">
+                  Mã đơn hệ thống: <span className="font-mono font-bold text-gray-600">{selectedPO.id.slice(0, 8)}…</span>
+                </p>
               </div>
-              <button 
-                onClick={() => setSelectedPO(null)}
-                className="p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-700 rounded-full transition"
-              >
-                <X className="w-4.5 h-4.5" />
-              </button>
+              <button onClick={closeDetail} className="p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-700 rounded-full transition"><X className="w-4 h-4" /></button>
             </div>
 
-            {/* Content Body */}
-            <div className="p-5 space-y-5">
-              
-              {/* Primary information cards */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-gray-50 rounded-xl space-y-1">
-                  <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Nhà cung cấp</span>
-                  <span className="font-extrabold text-gray-900 text-xs block">{selectedPO.supplierName}</span>
+            {/* Body */}
+            <div className="p-5 space-y-5 max-h-[70vh] overflow-y-auto">
+              {detailLoading ? (
+                <div className="py-10 text-center text-gray-400">
+                  <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-gray-300" />
+                  <p className="text-xs font-bold">Đang tải chi tiết...</p>
                 </div>
-
-                <div className="p-3 bg-gray-50 rounded-xl space-y-1">
-                  <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Chi nhánh nhận</span>
-                  <span className="font-extrabold text-gray-900 text-xs block">{selectedPO.storeName}</span>
-                </div>
-
-                <div className="p-3 bg-gray-50 rounded-xl space-y-1 col-span-2 sm:col-span-1">
-                  <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Ngày tạo tài liệu</span>
-                  <span className="font-semibold text-gray-800 text-xs block font-mono">{selectedPO.date}</span>
-                </div>
-
-                <div className="p-3 bg-gray-50 rounded-xl space-y-1 col-span-2 sm:col-span-1">
-                  <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Tổng giá trị thanh toán</span>
-                  <span className="font-black text-[#10B981] text-xs block font-mono">{formatVND(selectedPO.totalCost)}</span>
-                </div>
-              </div>
-
-              {/* Status Timeline */}
-              <div className="p-4 bg-gray-50 rounded-xl space-y-3.5">
-                <h4 className="font-bold text-gray-950 uppercase tracking-wide text-[10px]">Tiến độ lưu trữ đơn hàng</h4>
-                
-                <div className="space-y-4 relative pl-4 border-l-2 border-blue-500/30">
-                  
-                  {/* Step 1: Created */}
-                  <div className="relative">
-                    <span className="absolute -left-[22px] top-1 bg-blue-500 w-3 h-3 rounded-full border-2 border-white flex items-center justify-center shadow-3xs"></span>
-                    <div className="font-bold text-gray-800 text-xs">Yêu cầu lập đơn nhập</div>
-                    <p className="text-[10.5px] text-gray-400 mt-0.5">Yêu cầu nhập hàng được đăng ký trên hệ thống chuỗi bán lẻ bởi Ban Quản Lý.</p>
-                  </div>
-
-                  {/* Step 2: Confirmation / Action */}
-                  <div className="relative">
-                    {selectedPO.status === 'Chờ xác nhận' ? (
-                      <>
-                        <span className="absolute -left-[22px] top-1 bg-orange-400 w-3 h-3 rounded-full border-2 border-white animate-pulse"></span>
-                        <div className="font-bold text-orange-600 text-xs">Đang chờ thủ kho kiểm định</div>
-                        <p className="text-[10.5px] text-gray-400 mt-0.5">Xe tải chở hàng đang di chuyển hoặc đang dỡ hàng tại cửa hàng. Chờ nhân viên kho kiểm đếm thực tế và bấm nút duyệt.</p>
-                      </>
-                    ) : selectedPO.status === 'Đã nhập kho' ? (
-                      <>
-                        <span className="absolute -left-[22px] top-1 bg-emerald-500 w-3 h-3 rounded-full border-2 border-white"></span>
-                        <div className="font-bold text-emerald-600 text-xs">Phê duyệt - Nhập kho hoàn tất</div>
-                        <p className="text-[10.5px] text-gray-400 mt-0.5">Hàng hóa đã được dỡ, kiểm toán số lượng trùng khớp và ký biên bản điện tử cộng dồn trực tiếp vào số lượng tồn kho của chuỗi chi nhánh.</p>
-                      </>
-                    ) : (
-                      <>
-                        <span className="absolute -left-[22px] top-1 bg-red-550 w-3 h-3 rounded-full border-2 border-white"></span>
-                        <div className="font-bold text-red-650 text-xs">Đơn nhập đã hủy bỏ</div>
-                        <p className="text-[10.5px] text-gray-400 mt-0.5">Giao dịch đã bị đình chỉ và thu hồi bởi ban quản lý hoặc bên phía đối tác phân phối.</p>
-                      </>
-                    )}
-                  </div>
-
-                </div>
-              </div>
-
-              {/* Items Breakdown list placeholder */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between border-b border-gray-150 pb-2">
-                  <span className="font-bold text-gray-900">Danh mục sản phẩm</span>
-                  <span className="text-[10px] text-gray-400">Ước tính định số</span>
-                </div>
-                
-                <div className="space-y-2 max-h-32 overflow-y-auto">
-                  <div className="flex items-center justify-between p-2.5 bg-gray-50/50 rounded-lg">
-                    <div>
-                      <div className="font-bold text-gray-800 font-sans">Lô hàng tổng hợp ({selectedPO.orderId})</div>
-                      <div className="text-[10px] text-gray-400 font-medium">Nhà cung cấp: {selectedPO.supplierName}</div>
+              ) : (
+                <>
+                  {/* Meta info */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 bg-gray-50 rounded-xl space-y-1">
+                      <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Nhà cung cấp</span>
+                      <span className="font-extrabold text-gray-900 text-xs block">{selectedPO.Supplier?.supplierName ?? '—'}</span>
                     </div>
-                    <span className="font-mono font-bold text-gray-950">{formatVND(selectedPO.totalCost)}</span>
+                    <div className="p-3 bg-gray-50 rounded-xl space-y-1">
+                      <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Chi nhánh nhận</span>
+                      <span className="font-extrabold text-gray-900 text-xs block">{selectedPO.Store?.storeName ?? '—'}</span>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-xl space-y-1">
+                      <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Ngày tạo</span>
+                      <span className="font-semibold text-gray-800 text-xs block font-mono">{fmtDate(selectedPO.createdAt)}</span>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-xl space-y-1">
+                      <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Tổng giá trị</span>
+                      <span className="font-black text-[#10B981] text-xs block font-mono">{formatVND(selectedPO.totalCost)}</span>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-xl space-y-1">
+                      <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Người tạo</span>
+                      <span className="font-semibold text-gray-800 text-xs block">{selectedPO.creator?.fullName ?? '—'}</span>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-xl space-y-1">
+                      <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Trạng thái</span>
+                      <div className="mt-0.5">
+                        {selectedPO.status === 'pending' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-orange-600 mr-1.5 animate-pulse"></span>Chờ xác nhận
+                          </span>
+                        )}
+                        {selectedPO.status === 'completed' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mr-1.5"></span>Hoàn thành
+                          </span>
+                        )}
+                        {selectedPO.status === 'cancelled' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-600 mr-1.5"></span>Đã hủy
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
+                  {/* ── Danh sách sản phẩm trong đơn ── */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-black text-gray-900 uppercase tracking-wide text-[10px]">Danh mục sản phẩm trong đơn</h4>
+                      {selectedPO.status === 'pending' && isWarehouseStaff && (
+                        <span className="text-[9px] text-blue-500 font-semibold">Chỉnh SL thực nhận nếu khác đơn</span>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 overflow-hidden">
+                      <table className="w-full text-left text-[11px]">
+                        <thead className="bg-gray-50 border-b border-gray-200">
+                          <tr>
+                            <th className="px-3 py-2.5 font-black text-gray-500 uppercase tracking-wider text-[9px]">Sản phẩm</th>
+                            <th className="px-3 py-2.5 font-black text-gray-500 uppercase tracking-wider text-[9px] text-right">Đơn giá</th>
+                            <th className="px-3 py-2.5 font-black text-gray-500 uppercase tracking-wider text-[9px] text-right">SL đặt</th>
+                            <th className="px-3 py-2.5 font-black text-gray-500 uppercase tracking-wider text-[9px] text-right">
+                              {selectedPO.status === 'pending' && isWarehouseStaff ? 'SL thực nhận' : 'SL đã nhận'}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {(selectedPO.details ?? []).length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="px-3 py-4 text-center text-gray-400 text-[10px]">Không có dữ liệu chi tiết</td>
+                            </tr>
+                          ) : (selectedPO.details ?? []).map(detail => {
+                            const receivedItem = receivedItems.find(r => r.productId === detail.productId);
+                            return (
+                              <tr key={detail.id} className="hover:bg-gray-50/50">
+                                <td className="px-3 py-2.5">
+                                  <p className="font-bold text-gray-900">{detail.product?.productName ?? '—'}</p>
+                                  <p className="text-[9px] text-gray-400 font-mono mt-0.5">{detail.product?.sku}</p>
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-mono text-gray-600">{formatVND(detail.unitCost)}</td>
+                                <td className="px-3 py-2.5 text-right font-bold font-mono text-gray-800">{detail.quantity}</td>
+                                <td className="px-3 py-2.5 text-right">
+                                  {/* WarehouseStaff + pending: input chỉnh được */}
+                                  {selectedPO.status === 'pending' && isWarehouseStaff ? (
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={receivedItem?.receivedQuantity ?? detail.quantity}
+                                      onChange={e => {
+                                        const val = parseInt(e.target.value) || 0;
+                                        setReceivedItems(prev =>
+                                          prev.map(r => r.productId === detail.productId ? { ...r, receivedQuantity: val } : r)
+                                        );
+                                      }}
+                                      className="w-20 border border-gray-300 rounded-lg px-2 py-1 text-right font-mono font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 text-xs"
+                                    />
+                                  ) : (
+                                    /* completed/cancelled: read-only */
+                                    <span className={`font-bold font-mono ${detail.receivedQuantity !== null && detail.receivedQuantity !== detail.quantity ? 'text-amber-600' : 'text-gray-800'}`}>
+                                      {detail.receivedQuantity ?? '—'}
+                                      {detail.receivedQuantity !== null && detail.receivedQuantity !== detail.quantity && (
+                                        <span className="ml-1 text-[9px] text-amber-500 font-normal">(khác đơn)</span>
+                                      )}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        {/* Tổng cộng */}
+                        {(selectedPO.details ?? []).length > 0 && (
+                          <tfoot className="border-t border-gray-200 bg-gray-50">
+                            <tr>
+                              <td colSpan={3} className="px-3 py-2.5 font-black text-gray-700 text-[10px] uppercase tracking-wider text-right">Tổng giá trị đơn:</td>
+                              <td className="px-3 py-2.5 text-right font-black text-emerald-700 font-mono">{formatVND(selectedPO.totalCost)}</td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Status timeline */}
+                  <div className="p-4 bg-gray-50 rounded-xl space-y-3.5">
+                    <h4 className="font-bold text-gray-950 uppercase tracking-wide text-[10px]">Tiến độ lưu trữ đơn hàng</h4>
+                    <div className="space-y-4 relative pl-4 border-l-2 border-blue-500/30">
+                      <div className="relative">
+                        <span className="absolute -left-[22px] top-1 bg-blue-500 w-3 h-3 rounded-full border-2 border-white flex items-center justify-center shadow-3xs"></span>
+                        <div className="font-bold text-gray-800 text-xs">Yêu cầu lập đơn nhập</div>
+                        <p className="text-[10.5px] text-gray-400 mt-0.5">Yêu cầu nhập hàng được đăng ký trên hệ thống chuỗi bán lẻ bởi Ban Quản Lý.</p>
+                      </div>
+                      <div className="relative">
+                        {selectedPO.status === 'pending' ? (
+                          <>
+                            <span className="absolute -left-[22px] top-1 bg-orange-400 w-3 h-3 rounded-full border-2 border-white animate-pulse"></span>
+                            <div className="font-bold text-orange-600 text-xs">Đang chờ thủ kho kiểm định</div>
+                            <p className="text-[10.5px] text-gray-400 mt-0.5">Xe tải chở hàng đang di chuyển hoặc đang dỡ hàng tại cửa hàng. Chờ nhân viên kho kiểm đếm thực tế và bấm nút duyệt.</p>
+                          </>
+                        ) : selectedPO.status === 'completed' ? (
+                          <>
+                            <span className="absolute -left-[22px] top-1 bg-emerald-500 w-3 h-3 rounded-full border-2 border-white"></span>
+                            <div className="font-bold text-emerald-600 text-xs">Phê duyệt - Nhập kho hoàn tất</div>
+                            <p className="text-[10.5px] text-gray-400 mt-0.5">
+                              Xác nhận bởi <span className="font-bold text-gray-700">{selectedPO.confirmer?.fullName ?? 'Thủ kho'}</span> lúc {selectedPO.confirmedAt ? fmtDate(selectedPO.confirmedAt) : '—'}.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <span className="absolute -left-[22px] top-1 bg-red-500 w-3 h-3 rounded-full border-2 border-white"></span>
+                            <div className="font-bold text-red-600 text-xs">Đơn nhập đã hủy bỏ</div>
+                            <p className="text-[10.5px] text-gray-400 mt-0.5">Giao dịch đã bị đình chỉ và thu hồi bởi ban quản lý hoặc bên phía đối tác phân phối.</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Confirm error */}
+                  {confirmError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs font-medium">{confirmError}</div>
+                  )}
+                </>
+              )}
             </div>
 
-            {/* Footer buttons */}
+            {/* Footer */}
             <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end space-x-2">
-              
-              {selectedPO.status === 'Chờ xác nhận' && (
+              {/* Nút Xác nhận nhận hàng — chỉ WarehouseStaff, đơn pending */}
+              {selectedPO.status === 'pending' && isWarehouseStaff && !detailLoading && (
                 <button
                   type="button"
-                  onClick={() => {
-                    onConfirmPurchaseOrder(selectedPO.orderId);
-                    setSelectedPO(null);
-                  }}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition shadow-xs flex items-center space-x-1"
+                  onClick={handleConfirm}
+                  disabled={confirmLoading}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition shadow-xs flex items-center space-x-1"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>Xác nhận nhận hàng</span>
+                  {confirmLoading
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Đang xác nhận...</span></>
+                    : <><Check className="w-4 h-4" /><span>Xác nhận nhận hàng</span></>
+                  }
                 </button>
               )}
-
-              <button
-                type="button"
-                onClick={() => setSelectedPO(null)}
-                className="px-5 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 font-bold transition text-xs"
-              >
+              <button type="button" onClick={closeDetail}
+                className="px-5 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 font-bold transition text-xs">
                 Đóng cửa sổ
               </button>
             </div>
-
           </div>
         </div>
       )}
 
-      {/* ================= MODAL DIALOG: PHÁT HÀNH ĐƠN NHẬP MỚI ================= */}
+      {/* ================= MODAL: TẠO ĐƠN NHẬP HÀNG (Manager - API) ================= */}
       {isCreatingPO && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="relative bg-white max-w-md w-full rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-scaleIn text-xs">
-            
-            {/* Header */}
+          <div className="relative bg-white max-w-lg w-full rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-scaleIn text-xs">
             <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/80">
               <div>
                 <h3 className="text-xs font-bold text-gray-900 uppercase tracking-widest">Phát hành phiếu nhập hàng</h3>
                 <p className="text-[10px] text-gray-400 mt-1">Yêu cầu nhà cung cấp vận chuyển hàng bổ sung</p>
               </div>
-              <button 
-                onClick={() => setIsCreatingPO(false)}
-                className="p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-700 rounded-full transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <button onClick={() => setIsCreatingPO(false)} className="p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-700 rounded-full transition"><X className="w-4 h-4" /></button>
             </div>
-
-            {/* Form */}
-            <form onSubmit={handleCreateNewPurchaseOrder} className="p-5 space-y-4 text-xs font-medium">
-              
+            <form onSubmit={handleCreatePO} className="p-5 space-y-4 font-medium max-h-[75vh] overflow-y-auto">
               {/* Supplier */}
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-gray-500 uppercase">Đối tác cung cấp</label>
-                <select
-                  value={poSupplier}
-                  onChange={(e) => setPoSupplier(e.target.value)}
-                  className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-bold"
-                >
-                  <option value="Công ty Thực phẩm Masan">Công ty Thực phẩm Masan</option>
-                  <option value="Sữa Vinamilk Việt Nam">Sữa Vinamilk Việt Nam</option>
-                  <option value="Tập đoàn Unilever VN">Tập đoàn Unilever VN</option>
-                  <option value="Hợp tác xã Nông nghiệp Sạch">Hợp tác xã Nông nghiệp Sạch</option>
-                </select>
+                {suppliersLoading ? (
+                  <div className="flex items-center gap-2 text-gray-400 py-2"><Loader2 className="w-4 h-4 animate-spin" /><span>Đang tải...</span></div>
+                ) : suppliers.length === 0 ? (
+                  <p className="text-red-500 text-[10px]">Chưa có nhà cung cấp. Thêm vào bảng suppliers trước.</p>
+                ) : (
+                  <select value={newSupplierId} onChange={e => setNewSupplierId(e.target.value)}
+                    className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-bold">
+                    <option value="">-- Chọn nhà cung cấp --</option>
+                    {suppliers.map((supplier) => (
+                      <option
+                        key={supplier.id}
+                        value={supplier.id}
+                      >
+                        {supplier.supplierName}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
-
-              {/* Store destination */}
+              {/* Store */}
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-gray-500 uppercase">Nhập về chi nhánh cửa hàng</label>
-                <select
-                  value={poBranch}
-                  onChange={(e) => setPoBranch(e.target.value)}
-                  className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-bold"
-                >
-                  {stores.map(s => (
-                    <option key={s.id} value={s.storeName}>{s.storeName}</option>
-                  ))}
+                <label className="block text-[10px] font-bold text-gray-500 uppercase">Nhập về chi nhánh</label>
+                <select value={newStoreId} onChange={e => setNewStoreId(e.target.value)}
+                  className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-bold">
+                  <option value="">-- Chọn chi nhánh --</option>
+                  {apiStores.map(s => <option key={s.id} value={s.id}>{s.storeName}</option>)}
                 </select>
               </div>
-
-              {/* Product */}
+              {/* Product search */}
               <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-gray-500 uppercase font-semibold">Sản phẩm đặt hàng</label>
-                <select
-                  value={poProduct}
-                  onChange={(e) => {
-                    setPoProduct(e.target.value);
-                    const prodCost = products.find(p => p.productId === e.target.value)?.cost || 10000;
-                    setPoCost(prodCost);
-                  }}
-                  className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950"
-                >
-                  {products.map(p => (
-                    <option key={p.productId} value={p.productId}>{p.productName} (Vốn nhập: {formatVND(p.cost)})</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Quantity vs Cost */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Số lượng đặt</label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={poQty}
-                    onChange={(e) => setPoQty(parseInt(e.target.value) || 1)}
-                    className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-mono font-bold"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Đơn giá nhập ước tính</label>
-                  <input
-                    type="number"
-                    required
-                    value={poCost}
-                    onChange={(e) => setPoCost(parseInt(e.target.value) || 1000)}
-                    className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-mono font-bold"
-                  />
+                <label className="block text-[10px] font-bold text-gray-500 uppercase">Thêm sản phẩm đặt hàng</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                  <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)}
+                    placeholder="Tìm theo tên hoặc SKU..."
+                    className="pl-8 pr-4 py-2 w-full border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-xs" />
+                  {productSearchLoading && <Loader2 className="absolute right-3 top-2.5 h-3.5 w-3.5 text-gray-400 animate-spin" />}
+                  {productResults.length > 0 && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {productResults.map(p => (
+                        <button key={p.id} type="button" onClick={() => addToCart(p)}
+                          className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-center justify-between">
+                          <span className="font-bold text-gray-900">{p.productName}</span>
+                          <span className="text-gray-400 text-[10px] font-mono">{p.sku}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {/* Estimation total */}
-              <div className="p-3 bg-blue-50 text-blue-900 rounded-lg flex justify-between items-center text-xs">
-                <span className="font-bold">Tổng chi phí dự kiến:</span>
-                <span className="font-mono text-sm font-black text-gray-950">{formatVND(poQty * poCost)}</span>
-              </div>
-
+              {/* Cart */}
+              {cart.length > 0 && (
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Sản phẩm đã chọn</label>
+                  {cart.map(item => (
+                    <div key={item.productId} className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-gray-900 truncate">{item.productName}</p>
+                        <p className="text-[9px] text-gray-400 font-mono">{item.sku}</p>
+                      </div>
+                      <div className="flex items-end gap-2 shrink-0">
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="text-[9px] text-gray-400">SL</span>
+                          <input type="number" min={1} value={item.quantity}
+                            onChange={e => setCart(prev => prev.map(c => c.productId === item.productId ? { ...c, quantity: parseInt(e.target.value) || 1 } : c))}
+                            className="w-16 border border-gray-300 rounded px-1.5 py-1 text-right text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        </div>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="text-[9px] text-gray-400">Giá nhập (₫)</span>
+                          <input type="number" min={0} value={item.unitCost}
+                            onChange={e => setCart(prev => prev.map(c => c.productId === item.productId ? { ...c, unitCost: parseFloat(e.target.value) || 0 } : c))}
+                            className="w-24 border border-gray-300 rounded px-1.5 py-1 text-right text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                        </div>
+                        <button type="button" onClick={() => setCart(prev => prev.filter(c => c.productId !== item.productId))}
+                          className="text-red-400 hover:text-red-600 transition p-1"><X className="w-3.5 h-3.5" /></button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                    <span className="text-gray-600 font-bold">Tổng chi phí dự kiến:</span>
+                    <span className="font-mono font-black text-gray-950">{formatVND(cart.reduce((s, c) => s + c.quantity * c.unitCost, 0))}</span>
+                  </div>
+                </div>
+              )}
+              {createError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-xs font-medium">{createError}</div>
+              )}
               <div className="flex justify-end space-x-2 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingPO(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-bold transition"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[#3B82F6] hover:bg-blue-600 font-bold text-white rounded-lg transition"
-                >
-                  Phát hành yêu cầu
+                <button type="button" onClick={() => setIsCreatingPO(false)} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-bold transition">Hủy bỏ</button>
+                <button type="submit" disabled={createLoading}
+                  className="px-5 py-2 bg-[#3B82F6] hover:bg-blue-600 disabled:opacity-50 font-bold text-white rounded-lg transition flex items-center gap-2">
+                  {createLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {createLoading ? 'Đang tạo...' : 'Phát hành yêu cầu'}
                 </button>
               </div>
-
             </form>
-
           </div>
         </div>
       )}
+
       {/* ================= MODAL DIALOG: CHI TIẾT ĐIỀU CHUYỂN HÀNG ================= */}
       {selectedTransfer && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">

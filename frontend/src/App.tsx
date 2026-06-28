@@ -30,7 +30,7 @@ import {
   Shield
 } from 'lucide-react';
 
-import { Product, Employee, AuthUser, Customer, Invoice, Promotion, Store, PurchaseOrder } from './types';
+import { Product, Category, Employee, AuthUser, Customer, Invoice, Promotion, Store, PurchaseOrder } from './types';
 import { roleLabels, defaultTabByRole } from './utils/roleMapping';
 import { 
   initialProducts, 
@@ -50,10 +50,15 @@ import CustomerManagement from './components/CustomerManagement';
 import PromotionManagement from './components/PromotionManagement';
 import StoreManagement from './components/StoreManagement';
 import AccountManagement from './components/AccountManagement';
-import ReportView from './components/ReportView';
 import SalesManagement from './components/SalesManagement';
+import OrderHistory from './components/OrderHistory';
 import RevenueReport from './components/RevenueReport';
 import WarehouseManagement from './components/WarehouseManagement';
+import StockTransferManagement from './components/StockTransferManagement';
+
+import { searchProducts, getProducts, createProduct, deleteProduct, updateProduct } from './services/product.service';
+
+import { getCategories } from './services/category.service';
 
 export default function App() {
   // Authentication states
@@ -73,6 +78,8 @@ export default function App() {
   const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
   const [promotions, setPromotions] = useState<Promotion[]>(initialPromotions);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(initialPurchaseOrders);
+
+  const [categories, setCategories] = useState<Category[]>([]);
 
   // Tab navigation states
   const [activeTab, setActiveTab] = useState('Tổng quan');
@@ -155,9 +162,100 @@ export default function App() {
     setCheckoutSuccess(false);
   };
 
+  const loadProducts = async () => {
+    const data = await getProducts();
+
+    setProducts(
+      data.map((p: any) => ({
+        productId: p.id,
+        sku: p.sku,
+        productName: p.productName,
+        categoryId: p.categoryId,
+        category: p.category?.categoryName ?? '',
+        price: Number(p.price),
+        cost: Number(p.costPrice ?? 0),
+        stock: 0,
+        status: p.isActive
+          ? 'Đang kinh doanh'
+          : 'Ngừng kinh doanh',
+      }))
+    );
+  };
+
+  const loadCategories = async () => {
+    const data = await getCategories();
+
+    setCategories(data);
+  };
+
+  useEffect(() => {
+    loadProducts();
+    loadCategories();
+  }, []);
+
+  const handleSearchProducts = async (keyword: string) => {
+    if (!keyword.trim()) {
+      await loadProducts();
+      return;
+    }
+
+    const data = await searchProducts(keyword);
+
+    setProducts(
+      data.map((p) => ({
+        productId: p.id,
+        sku: p.sku,
+        productName: p.productName,
+        categoryId: p.categoryId,
+        category: p.category?.categoryName ?? '',
+        price: Number(p.price),
+        cost: Number(p.costPrice ?? 0),
+        stock: 0,
+        status: p.isActive
+          ? 'Đang kinh doanh'
+          : 'Ngừng kinh doanh',
+      }))
+    );
+  };
+
   // State mutation functions (passed to subcomponents to write persistent mock state changes)
-  const handleAddProduct = (p: Product) => {
-    setProducts([p, ...products]);
+  const handleAddProduct = async (
+    product: Product
+  ) => {
+    await createProduct({
+      productName: product.productName,
+      categoryId: product.categoryId,
+      price: product.price,
+      costPrice: product.cost,
+    });
+
+    await loadProducts();
+  };
+
+  const handleUpdateProduct =
+    async (
+      id: string,
+      data: Partial<Product>
+    ) => {
+
+      await updateProduct(
+        id,
+        {
+          productName:
+            data.productName,
+
+          categoryId:
+            data.categoryId,
+
+          price:
+            data.price,
+
+          costPrice:
+            data.cost,
+        }
+      );
+
+      await loadProducts();
   };
 
   const handleAddNewInvoice = (inv: Invoice) => {
@@ -176,9 +274,13 @@ export default function App() {
     ));
   };
 
-  const handleDeleteProduct = (id: string) => {
+  const handleDeleteProduct = async (id: string) => {
     if (confirm(`Bạn có chắc muốn xóa sản phẩm ${id}?`)) {
-      setProducts(products.filter(p => p.productId !== id));
+      await deleteProduct(id);
+
+      setProducts(prev =>
+        prev.filter(p => p.productId !== id)
+      );
     }
   };
 
@@ -470,6 +572,8 @@ export default function App() {
                 {userRole === 'Quản lý' && [
                   { name: 'Tổng quan', icon: LayoutDashboard },
                   { name: 'Sản phẩm', icon: ShoppingBag },
+                  { name: 'Đơn nhập hàng', icon: PackageCheck },
+                  { name: 'Điều chuyển hàng', icon: RefreshCw },
                   { name: 'Nhân viên', icon: Users },
                   { name: 'Khách hàng', icon: UserCheck },
                   { name: 'Khuyến mãi', icon: Gift },
@@ -627,9 +731,31 @@ export default function App() {
                   {activeTab === 'Sản phẩm' && (
                     <ProductManagement 
                       products={products} 
-                      onAddProduct={handleAddProduct} 
+                      categories={categories}
+                      onAddProduct={handleAddProduct}
+                      onUpdateProduct={handleUpdateProduct} 
                       onDeleteProduct={handleDeleteProduct}
+                      onSearch={handleSearchProducts}
                     />
+                  )}
+                  {activeTab === 'Đơn nhập hàng' && (
+                    <WarehouseManagement
+                      products={products}
+                      purchaseOrders={purchaseOrders}
+                      stores={initialStores}
+                      activeTab="Đơn nhập hàng"
+                      userRole={userRole}
+                      onConfirmPurchaseOrder={handleConfirmPurchaseOrder}
+                      onAdjustStock={(productId, newStock) => {
+                        setProducts(prev => prev.map(p =>
+                          p.productId === productId ? { ...p, stock: newStock } : p
+                        ));
+                      }}
+                      onAddNewPurchaseOrder={(po) => setPurchaseOrders([po, ...purchaseOrders])}
+                    />
+                  )}
+                  {activeTab === 'Điều chuyển hàng' && (
+                    <StockTransferManagement userRole={userRole} />
                   )}
                   {activeTab === 'Nhân viên' && (
                     <EmployeeManagement 
@@ -654,11 +780,7 @@ export default function App() {
                     />
                   )}
                   {activeTab === 'Chi nhánh' && (
-                    <StoreManagement 
-                      stores={initialStores} 
-                      employees={employees}
-                      invoices={invoices}
-                    />
+                    <StoreManagement userRole={userRole} />
                   )}
                   {activeTab === 'Tài khoản' && (
                     <AccountManagement 
@@ -695,14 +817,17 @@ export default function App() {
                     />
                   )}
 
-                  {activeTab === 'Lịch sử đơn hàng' && (
-                    <ReportView invoices={invoices} />
+                  {activeTab === 'Lịch sử đơn hàng' && currentUser && (
+                    <OrderHistory currentUser={{ storeId: currentUser.storeId, role: currentUser.role }} />
                   )}
                 </>
               )}
 
               {/* --- WAREHOUSE ROLE VIEW "Tồn kho", "Đơn nhập hàng", and "Điều chuyển hàng" --- */}
-              {userRole === 'Nhân viên kho' && (
+              {userRole === 'Nhân viên kho' && activeTab === 'Điều chuyển hàng' && (
+                <StockTransferManagement userRole={userRole} />
+              )}
+              {userRole === 'Nhân viên kho' && activeTab !== 'Điều chuyển hàng' && (
                 <WarehouseManagement
                   products={products}
                   purchaseOrders={purchaseOrders}
@@ -712,7 +837,7 @@ export default function App() {
 				  currentUserStoreId={currentUser?.storeId ?? null}
                   onConfirmPurchaseOrder={handleConfirmPurchaseOrder}
                   onAdjustStock={(productId, newStock) => {
-                    setProducts(prevProducts => prevProducts.map(p => 
+                    setProducts(prevProducts => prevProducts.map(p =>
                       p.productId === productId ? { ...p, stock: newStock } : p
                     ));
                   }}

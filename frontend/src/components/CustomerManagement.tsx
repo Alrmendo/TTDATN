@@ -1,24 +1,25 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { Customer, Invoice } from '../types';
-import { 
-  Search, 
-  Plus, 
-  Star, 
-  History, 
-  Edit2, 
-  ChevronLeft, 
-  ChevronRight, 
-  X, 
-  Mail, 
-  Phone, 
-  User, 
-  Calendar, 
-  TrendingUp, 
+import { Customer, Invoice, ApiCustomer } from '../types';
+import {
+  Search,
+  Plus,
+  Star,
+  History,
+  Edit2,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Mail,
+  Phone,
+  User,
+  Calendar,
+  TrendingUp,
   Award,
   DollarSign,
   Check,
   ShoppingBag
 } from 'lucide-react';
+import { searchCustomers, createCustomer } from '../services/customer.service';
 
 interface CustomerManagementProps {
   customers: Customer[];
@@ -26,19 +27,46 @@ interface CustomerManagementProps {
   invoices?: Invoice[];
 }
 
-export default function CustomerManagement({ 
-  customers, 
+const mapTier = (memberLevel: string | null): Customer['tier'] => {
+  if (memberLevel === 'Đồng' || memberLevel === 'Bạc' || memberLevel === 'Vàng' || memberLevel === 'Kim cương') {
+    return memberLevel;
+  }
+  return 'Đồng';
+};
+
+export default function CustomerManagement({
+  customers,
   onAddCustomer,
   invoices = []
 }: CustomerManagementProps) {
-  
-  // Localized customers state to support instant, smooth updates (editing/adding)
-  const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers);
 
-  // Sync props to local state if parent updates
+  // Localized customers state, populated from the real API (not from props anymore)
+  const [localCustomers, setLocalCustomers] = useState<Customer[]>([]);
+
+  const loadCustomers = async () => {
+    try {
+      const data: ApiCustomer[] = await searchCustomers();
+
+      const mapped: Customer[] = data.map((c) => ({
+        id: c.id,
+        name: c.fullName,
+        phone: c.phone,
+        email: c.email ?? undefined,
+        loyaltyPoints: c.loyaltyPoints?.points ?? 0,
+        tier: mapTier(c.memberLevel),
+        totalSpent: 0,
+        joinDate: c.createdAt.split('T')[0],
+      }));
+
+      setLocalCustomers(mapped);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
-    setLocalCustomers(customers);
-  }, [customers]);
+    loadCustomers();
+  }, []);
 
   // Search and Filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,8 +85,6 @@ export default function CustomerManagement({
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newTier, setNewTier] = useState<'Đồng' | 'Bạc' | 'Vàng' | 'Kim cương'>('Đồng');
-  const [newPoints, setNewPoints] = useState(0);
 
   // Form states for editing a customer
   const [editName, setEditName] = useState('');
@@ -112,40 +138,35 @@ export default function CustomerManagement({
 
   // ------------------ API HANDLERS ------------------
   
-  const handleAddNewCustomerSubmit = (e: FormEvent) => {
+  const handleAddNewCustomerSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || !newPhone.trim()) {
       alert('Vui lòng điền đủ họ tên và số điện thoại!');
       return;
     }
 
-    // Auto id incrementation
-    const newId = `KH${String(localCustomers.length + 1).padStart(3, '0')}`;
-    const today = new Date();
-    const formattedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const registeredName = newName.trim();
 
-    const newCustObj: Customer = {
-      id: newId,
-      name: newName.trim(),
-      phone: newPhone.trim(),
-      email: newEmail.trim() || undefined,
-      loyaltyPoints: newPoints || 0,
-      tier: newTier,
-      totalSpent: 0,
-      joinDate: formattedDate
-    };
+    try {
+      await createCustomer({
+        fullName: registeredName,
+        phone: newPhone.trim(),
+        email: newEmail.trim() || undefined,
+      });
 
-    onAddCustomer(newCustObj);
-    
+      await loadCustomers();
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Đăng ký khách hàng thất bại');
+      return;
+    }
+
     // reset form fields
     setNewName('');
     setNewPhone('');
     setNewEmail('');
-    setNewTier('Đồng');
-    setNewPoints(0);
     setIsAdding(false);
 
-    showToast(`Đăng ký thành viên ${newName} thành công với mã ${newId}!`);
+    showToast(`Đăng ký thành viên ${registeredName} thành công!`);
   };
 
   const handleOpenEditCustomerModal = (c: Customer) => {
@@ -389,11 +410,11 @@ export default function CustomerManagement({
                           <span>Xem lịch sử</span>
                         </button>
 
-                        {/* Edit Customer Trigger Button */}
+                        {/* Edit Customer Trigger Button — disabled: backend has no PUT /api/customers/:id yet */}
                         <button
-                          onClick={() => handleOpenEditCustomerModal(c)}
-                          className="px-2 py-1 text-[10px] font-extrabold border border-gray-200 hover:border-[#3B82F6] hover:text-[#3B82F6] rounded bg-white text-gray-700 transition flex items-center space-x-0.5"
-                          title="Sửa thông tin"
+                          disabled
+                          className="px-2 py-1 text-[10px] font-extrabold border border-gray-200 rounded bg-white text-gray-300 cursor-not-allowed flex items-center space-x-0.5"
+                          title="Chức năng sửa khách hàng chưa được hỗ trợ — backend chưa có endpoint cập nhật"
                         >
                           <Edit2 className="w-3 h-3" />
                           <span>Sửa</span>
@@ -514,34 +535,6 @@ export default function CustomerManagement({
                   placeholder="Ví dụ: nam.le@gmail.com"
                   className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950"
                 />
-              </div>
-
-              {/* Tier & Initial Score points */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Hạng xếp hạng khởi tạo</label>
-                  <select
-                    value={newTier}
-                    onChange={(e) => setNewTier(e.target.value as any)}
-                    className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-bold"
-                  >
-                    <option value="Đồng">Đồng</option>
-                    <option value="Bạc">Bạc</option>
-                    <option value="Vàng">Vàng</option>
-                    <option value="Kim cương">Kim cương</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Điểm thưởng quà tặng</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={newPoints}
-                    onChange={(e) => setNewPoints(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-mono font-bold"
-                  />
-                </div>
               </div>
 
               <div className="flex justify-end space-x-2 pt-3 border-t border-gray-100">

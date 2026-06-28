@@ -6,7 +6,6 @@ export class Invoice extends Model {
   declare storeId: string;
   declare staffId: string;
   declare customerId: string | null;
-  // TODO: add FK association to Promotion model once it exists
   declare promotionId: string | null;
   declare status: 'draft' | 'completed' | 'cancelled';
   declare subtotal: number;
@@ -24,8 +23,11 @@ Invoice.init(
     storeId: { type: DataTypes.UUID, allowNull: false },
     staffId: { type: DataTypes.UUID, allowNull: false },
     customerId: { type: DataTypes.UUID, allowNull: true },
-    // TODO: add FK association to Promotion model once it exists
-    promotionId: { type: DataTypes.UUID, allowNull: true },
+    promotionId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: { model: 'promotions', key: 'id' },
+    },
     status: {
       type: DataTypes.ENUM('draft', 'completed', 'cancelled'),
       allowNull: false,

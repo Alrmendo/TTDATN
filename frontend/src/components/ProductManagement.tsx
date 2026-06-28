@@ -1,37 +1,58 @@
-import { useState, FormEvent } from 'react';
-import { Product } from '../types';
+import { useState, useEffect, FormEvent } from 'react';
+import { Product, Category } from '../types';
 import { Search, Plus, Filter, AlertTriangle, Trash2, Edit, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface ProductManagementProps {
   products: Product[];
+  categories: Category[];
   onAddProduct: (p: Product) => void;
   onDeleteProduct: (id: string) => void;
+  onSearch?: (keyword: string) => void;
+  onUpdateProduct: (
+    id: string,
+    data: Partial<Product>
+  ) => Promise<void>;
   // Let's add an optional call back to toggle status
   onToggleStatus?: (id: string) => void;
 }
 
-export default function ProductManagement({ products, onAddProduct, onDeleteProduct }: ProductManagementProps) {
+export default function ProductManagement({ products, categories, onAddProduct, onDeleteProduct, onSearch, onUpdateProduct }: ProductManagementProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Tất cả');
   const [isAdding, setIsAdding] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
 
-  // Edit/toggle status local override database simulation
-  const [localStatuses, setLocalStatuses] = useState<Record<string, 'Đang kinh doanh' | 'Ngừng kinh doanh'>>({});
-
   // New product form states
   const [name, setName] = useState('');
-  const [category, setCategory] = useState('Thực phẩm khô');
+  const [categoryId, setCategoryId] = useState('');
   const [price, setPrice] = useState(0);
   const [cost, setCost] = useState(0);
   const [stock, setStock] = useState(0);
 
-  const categories = ['Tất cả', ...Array.from(new Set(products.map(p => p.category)))];
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingProductId, setEditingProductId] = useState('');
+
+  const [editName, setEditName] = useState('');
+  const [editCategoryId, setEditCategoryId] = useState('');
+  const [editPrice, setEditPrice] = useState(0);
+  const [editCost, setEditCost] = useState(0);
+
+  useEffect(() => {
+    if (
+      categories.length > 0 &&
+      !categoryId
+    ) {
+      setCategoryId(categories[0].id);
+    }
+  }, [categories]);
+
+  const categoryOptions = ['Tất cả', ...Array.from(new Set(products.map(p => p.category)))];
 
   const handleSearchChange = (val: string) => {
     setSearchTerm(val);
     setCurrentPage(1);
+    onSearch?.(val);
   };
 
   const handleCategoryChange = (val: string) => {
@@ -39,13 +60,11 @@ export default function ProductManagement({ products, onAddProduct, onDeleteProd
     setCurrentPage(1);
   };
 
-  const filteredProducts = products.map(p => ({
-    ...p,
-    status: localStatuses[p.productId] !== undefined ? localStatuses[p.productId] : (p.status || 'Đang kinh doanh')
-  })).filter(p => {
-    const matchesSearch = p.productName.toLowerCase().includes(searchTerm.toLowerCase()) || p.productId.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'Tất cả' || p.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+  const filteredProducts = products.filter(p => {
+    return (
+      selectedCategory === 'Tất cả' ||
+      p.category === selectedCategory
+    );
   });
 
   // Pagination calculation
@@ -63,11 +82,10 @@ export default function ProductManagement({ products, onAddProduct, onDeleteProd
     e.preventDefault();
     if (!name.trim() || price <= 0 || cost <= 0) return;
 
-    const newId = `SP0${products.length + 1}`;
     onAddProduct({
-      productId: newId,
       productName: name,
-      category,
+      categoryId: categoryId,
+      category: categories.find(c => c.id === categoryId)?.categoryName ?? '',
       price: Number(price),
       cost: Number(cost),
       stock: Number(stock),
@@ -76,20 +94,48 @@ export default function ProductManagement({ products, onAddProduct, onDeleteProd
 
     // Reset form
     setName('');
-    setCategory('Thực phẩm khô');
+    setCategoryId(categories[0]?.id ?? '');
     setPrice(0);
     setCost(0);
     setStock(0);
     setIsAdding(false);
   };
 
-  const handleToggleStatus = (id: string) => {
-    const currentStatus = localStatuses[id] || products.find(p => p.productId === id)?.status || 'Đang kinh doanh';
-    const nextStatus = currentStatus === 'Đang kinh doanh' ? 'Ngừng kinh doanh' : 'Đang kinh doanh';
-    setLocalStatuses({
-      ...localStatuses,
-      [id]: nextStatus
-    });
+  const handleEditClick = (
+    product: Product
+  ) => {
+    setEditingProductId(product.productId);
+
+    setEditName(product.productName);
+
+    setEditCategoryId(
+      product.categoryId ??
+      product.category
+    );
+
+    setEditPrice(product.price);
+    setEditCost(product.cost);
+
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = async (
+    e: FormEvent
+  ) => {
+    e.preventDefault();
+
+    await onUpdateProduct(
+      editingProductId,
+      {
+        productName: editName,
+        categoryId: editCategoryId,
+        category: categories.find(c => c.id === editCategoryId)?.categoryName ?? '',
+        price: editPrice,
+        cost: editCost,
+      }
+    );
+
+    setIsEditing(false);
   };
 
   const formatVND = (num: number) => {
@@ -133,7 +179,7 @@ export default function ProductManagement({ products, onAddProduct, onDeleteProd
               onChange={(e) => handleCategoryChange(e.target.value)}
               className="bg-transparent font-bold focus:outline-none text-xs text-gray-700 cursor-pointer"
             >
-              {categories.map(c => (
+              {categoryOptions.map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
@@ -179,16 +225,15 @@ export default function ProductManagement({ products, onAddProduct, onDeleteProd
             <div className="space-y-1">
               <label className="block font-semibold text-gray-700">Danh mục sản phẩm</label>
               <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
                 className="block w-full border border-gray-300 rounded-md p-2 bg-white"
               >
-                <option value="Thực phẩm khô">Thực phẩm khô</option>
-                <option value="Gia vị">Gia vị</option>
-                <option value="Sữa & Sản phẩm từ sữa">Sữa & Sản phẩm từ sữa</option>
-                <option value="Đồ uống">Đồ uống</option>
-                <option value="Hóa mỹ phẩm">Hóa mỹ phẩm</option>
-                <option value="Gia dụng">Gia dụng</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.categoryName}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -247,6 +292,101 @@ export default function ProductManagement({ products, onAddProduct, onDeleteProd
         </div>
       )}
 
+      {isEditing && (
+        <div className="bg-white p-6 rounded-xl border border-blue-100 shadow-md max-w-2xl animate-fadeIn transition duration-200">
+          <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+            <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Sửa sản phẩm</h3>
+            <button 
+              onClick={() => setIsEditing(false)}
+              className="text-[#3B82F6] hover:text-blue-700 font-semibold text-xs animate-pulse"
+            >
+              Đóng Form (X)
+            </button>
+          </div>
+
+          <form onSubmit={handleSaveEdit} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div className="space-y-1 md:col-span-2">
+              <label className="block font-semibold text-gray-700">Tên sản phẩm</label>
+              <input
+                type="text"
+                required
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="block w-full border border-gray-300 rounded-md p-2"
+                placeholder="Nhập tên sản phẩm (ví dụ: Sữa đặc Ông Thọ đỏ)"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block font-semibold text-gray-700">Danh mục sản phẩm</label>
+              <select
+                value={editCategoryId}
+                onChange={(e) => setEditCategoryId(e.target.value)}
+                className="block w-full border border-gray-300 rounded-md p-2 bg-white"
+              >
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.categoryName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block font-semibold text-gray-700">Đơn giá bán (₫)</label>
+              <input
+                type="number"
+                required
+                min="0"
+                value={editPrice}
+                onChange={(e) => setEditPrice(Number(e.target.value))}
+                className="block w-full border border-gray-300 rounded-md p-2"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block font-semibold text-gray-700">Giá vốn nhập (₫)</label>
+              <input
+                type="number"
+                required
+                min="0"
+                value={editCost}
+                onChange={(e) => setEditCost(Number(e.target.value))}
+                className="block w-full border border-gray-300 rounded-md p-2"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block font-semibold text-gray-700">Số lượng tồn ban đầu</label>
+              <input
+                type="number"
+                required
+                min="0"
+                value={stock}
+                onChange={(e) => setStock(Number(e.target.value))}
+                className="block w-full border border-gray-300 rounded-md p-2"
+              />
+            </div>
+
+            <div className="md:col-span-2 flex justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="px-3.5 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 font-semibold"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 bg-[#3B82F6] hover:bg-blue-600 font-semibold text-white rounded-lg shadow-xs"
+              >
+                Lưu sản phẩm
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Critical warning state block */}
       {products.filter(p => p.stock <= 4).length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -281,7 +421,7 @@ export default function ProductManagement({ products, onAddProduct, onDeleteProd
                 const isUnderStock = p.stock <= 5;
                 return (
                   <tr key={p.productId} className="hover:bg-gray-50/70 transition" id={`row-sp-${p.productId}`}>
-                    <td className="px-5 py-3.5 text-[#3B82F6] font-bold font-mono text-[11px]">{p.productId}</td>
+                    <td className="px-5 py-3.5 text-[#3B82F6] font-bold font-mono text-[11px]">{p.sku}</td>
                     <td className="px-5 py-3.5 text-gray-950 font-bold">
                       <div className="flex flex-col">
                         <span>{p.productName}</span>
@@ -315,7 +455,7 @@ export default function ProductManagement({ products, onAddProduct, onDeleteProd
                     <td className="px-5 py-3.5 text-center">
                       <div className="flex justify-center items-center space-x-1.5">
                         <button 
-                          onClick={() => handleToggleStatus(p.productId)}
+                          onClick={() => handleEditClick(p)}
                           title="Đổi trạng thái kinh doanh (Sửa)"
                           className="p-1 px-1.5 hover:bg-blue-50 text-gray-400 hover:text-[#3B82F6] rounded transition flex items-center space-x-1 text-[11px] font-semibold border border-transparent hover:border-blue-100"
                         >

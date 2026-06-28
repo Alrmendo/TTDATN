@@ -6,7 +6,7 @@
 // file's columns differ (e.g. if `lowStockThreshold`/`lastUpdated` are named
 // differently, or `adjustQuantity` isn't implemented yet per the README).
 
-import { DataTypes, Model, Optional } from 'sequelize';
+import { DataTypes, Model, Optional, Transaction } from 'sequelize';
 import { sequelize } from '../config/database';
 
 interface InventoryAttributes {
@@ -35,27 +35,26 @@ class Inventory
   public lastUpdated!: Date;
 
   /**
-   * Cộng/trừ trực tiếp số lượng — theo Schema.md mục 5.
-   * Throw "Tồn kho không đủ" nếu kết quả < 0 (dùng trong SD-04 alt flow 9a).
-   * Method DUY NHẤT được phép ghi `quantity` — luôn gọi qua
-   * InventoryService.updateInventory(), không gọi trực tiếp từ controller.
+   * `transaction` MUST be passed through when the caller already holds a
+   * row lock on this record (e.g. InventoryService.updateInventory's
+   * `t.LOCK.UPDATE`) — otherwise this save() runs on a separate pooled
+   * connection and blocks forever waiting for the caller's own lock to
+   * release, deadlocking the request.
    */
-  public async adjustQuantity(delta: number): Promise<void> {
-    const next = this.quantity + delta;
-    if (next < 0) {
-      throw new Error('Tồn kho không đủ');
-    }
-    this.quantity = next;
+  async adjustQuantity(delta: number, transaction?: Transaction): Promise<void> {
+    const newQty = this.quantity + delta;
+    if (newQty < 0) throw new Error('Tồn kho không đủ');
+    this.quantity = newQty;
     this.lastUpdated = new Date();
-    await this.save();
+    await this.save({ transaction });
   }
 }
 
 Inventory.init(
   {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    storeId: { type: DataTypes.UUID, allowNull: false },
-    productId: { type: DataTypes.UUID, allowNull: false },
+    storeId: { type: DataTypes.UUID, allowNull: false, references: { model: 'stores', key: 'id' } },
+    productId: { type: DataTypes.UUID, allowNull: false, references: { model: 'products', key: 'id' } },
     quantity: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     lowStockThreshold: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 10 },
     lastUpdated: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },

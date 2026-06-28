@@ -1,11 +1,18 @@
 export interface Product {
   productId: string;
+  sku: string;
   productName: string;
   category: string;
+  categoryId: string;
   price: number;
   cost: number;
   stock: number;
   status?: 'Đang kinh doanh' | 'Ngừng kinh doanh';
+}
+
+export interface Category {
+  id: string;
+  categoryName: string;
 }
 
 export interface Employee {
@@ -106,6 +113,69 @@ export interface AuthUser {
   email: string;
   role: 'Manager' | 'Staff' | 'WarehouseStaff';
   storeId: string | null;
+}
+
+export interface ApiCustomer {
+  id: string;
+  fullName: string;
+  phone: string;
+  email: string | null;
+  address: string | null;
+  memberLevel: string | null;
+  createdAt: string;
+  loyaltyPoints?: { points: number };
+}
+
+export interface ApiPromotion {
+  id: string;
+  name: string;
+  type: 'percentage' | 'fixed';
+  value: number;
+  productId: string | null;
+  minOrderValue: number | null;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+}
+
+export interface ApiInvoiceDetail {
+  id: string;
+  invoiceId: string;
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  product?: { productName: string; sku: string };
+}
+
+export interface ApiInvoice {
+  id: string;
+  storeId: string;
+  staffId: string;
+  customerId: string | null;
+  promotionId: string | null;
+  status: 'draft' | 'completed' | 'cancelled';
+  subtotal: number;
+  discountAmount: number;
+  totalAmount: number;
+  paymentMethod: string | null;
+  paymentStatus: 'pending' | 'success' | 'failed';
+  paidAt: string | null;
+  createdAt: string;
+  invoiceDetails?: ApiInvoiceDetail[];
+  customer?: ApiCustomer | null;
+  staff?: { fullName: string };
+  promotion?: ApiPromotion | null;
+}
+
+export interface ApiProduct {
+  id: string;
+  productName: string;
+  sku: string;
+  price: number;
+  categoryId: string;
+  isActive: boolean;
+  category?: { categoryName: string };
 }
 
 // ===== Inventory module (GET/PUT /api/inventory) =====
