@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import InventoryService, { InventoryError } from '../services/inventoryService';
+import InventoryService, { InventoryError } from '../services/Inventory.service';
 
 /**
  * GET /api/inventory?storeId=

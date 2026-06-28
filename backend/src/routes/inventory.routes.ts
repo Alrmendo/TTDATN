@@ -5,7 +5,7 @@ import {
   getInventoryByStore,
   getLowStockProducts,
   setInventoryQuantity,
-} from '../controllers/inventoryController';
+} from '../controllers/inventory.controller';
 
 const router = Router();
 

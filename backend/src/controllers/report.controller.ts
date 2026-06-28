@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import ReportService from '../services/reportService';
+import ReportService from '../services/report.service';
 
 /**
  * GET /api/report/revenue?startDate=&endDate=&storeId=

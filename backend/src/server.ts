@@ -20,10 +20,10 @@ app.use('/api/accounts', accountRoutes);
 import storeRoutes from './routes/store.routes';
 app.use('/api/stores', storeRoutes);
 
-import reportRoutes from './routes/reportRoutes';
+import reportRoutes from './routes/report.routes';
 app.use('/api/report', reportRoutes);
 
-import inventoryRoutes from './routes/inventoryRoutes';
+import inventoryRoutes from './routes/inventory.routes';
 app.use('/api/inventory', inventoryRoutes);
 
 const PORT = process.env.PORT || 5000;

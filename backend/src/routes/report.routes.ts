@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { roleMiddleware } from '../middleware/role.middleware';
-import { getRevenueReport, getInventoryReport } from '../controllers/reportController';
+import { getRevenueReport, getInventoryReport } from '../controllers/report.controller';
 
 const router = Router();
 
