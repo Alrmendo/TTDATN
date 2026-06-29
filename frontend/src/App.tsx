@@ -13,8 +13,7 @@ import {
   LogOut, 
   LayoutDashboard, 
   ShoppingBag, 
-  Users, 
-  UserCheck, 
+  UserCheck,
   Gift, 
   Store as StoreIcon, 
   FileText, 
@@ -30,12 +29,11 @@ import {
   Shield
 } from 'lucide-react';
 
-import { Product, Category, Employee, AuthUser, Customer, Invoice, Promotion, Store, PurchaseOrder } from './types';
+import { Product, Category, AuthUser, Customer, Invoice, Promotion, Store, PurchaseOrder } from './types';
 import { roleLabels, defaultTabByRole } from './utils/roleMapping';
 import { 
-  initialProducts, 
-  initialEmployees, 
-  initialCustomers, 
+  initialProducts,
+  initialCustomers,
   initialInvoices, 
   initialPromotions, 
   initialStores, 
@@ -45,7 +43,6 @@ import {
 // Component imports
 import DashboardOverview from './components/DashboardOverview';
 import ProductManagement from './components/ProductManagement';
-import EmployeeManagement from './components/EmployeeManagement';
 import CustomerManagement from './components/CustomerManagement';
 import PromotionManagement from './components/PromotionManagement';
 import StoreManagement from './components/StoreManagement';
@@ -73,8 +70,7 @@ export default function App() {
   const [userRole, setUserRole] = useState<'Quản lý' | 'Nhân viên bán hàng' | 'Nhân viên kho' | ''>('');
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [products, setProducts] = useState<Product[]>(initialProducts);
-  const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
-  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
+const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
   const [promotions, setPromotions] = useState<Promotion[]>(initialPromotions);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(initialPurchaseOrders);
@@ -281,20 +277,6 @@ export default function App() {
       setProducts(prev =>
         prev.filter(p => p.productId !== id)
       );
-    }
-  };
-
-  const handleAddEmployee = (e: Employee) => {
-    setEmployees([e, ...employees]);
-  };
-
-  const handleUpdateEmployee = (updatedEmp: Employee) => {
-    setEmployees(prev => prev.map(emp => emp.id === updatedEmp.id ? updatedEmp : emp));
-  };
-
-  const handleDeleteEmployee = (id: string) => {
-    if (confirm(`Bạn có chắc muốn ngừng hoạt động tài khoản nhân viên ${id}?`)) {
-      setEmployees(employees.map(emp => emp.id === id ? { ...emp, status: 'Vô hiệu hóa' } : emp));
     }
   };
 
@@ -574,7 +556,6 @@ export default function App() {
                   { name: 'Sản phẩm', icon: ShoppingBag },
                   { name: 'Đơn nhập hàng', icon: PackageCheck },
                   { name: 'Điều chuyển hàng', icon: RefreshCw },
-                  { name: 'Nhân viên', icon: Users },
                   { name: 'Khách hàng', icon: UserCheck },
                   { name: 'Khuyến mãi', icon: Gift },
                   { name: 'Chi nhánh', icon: StoreIcon },
@@ -757,15 +738,6 @@ export default function App() {
                   {activeTab === 'Điều chuyển hàng' && (
                     <StockTransferManagement userRole={userRole} />
                   )}
-                  {activeTab === 'Nhân viên' && (
-                    <EmployeeManagement 
-                      employees={employees} 
-                      stores={initialStores}
-                      onAddEmployee={handleAddEmployee}
-                      onUpdateEmployee={handleUpdateEmployee}
-                      onDeleteEmployee={handleDeleteEmployee}
-                    />
-                  )}
                   {activeTab === 'Khách hàng' && (
                     <CustomerManagement 
                       customers={customers} 
@@ -783,10 +755,7 @@ export default function App() {
                     <StoreManagement userRole={userRole} />
                   )}
                   {activeTab === 'Tài khoản' && (
-                    <AccountManagement 
-                      employees={employees} 
-                      stores={initialStores} 
-                    />
+                    <AccountManagement stores={initialStores} />
                   )}
                   {activeTab === 'Báo cáo' && (
                     <RevenueReport invoices={invoices} products={products} />

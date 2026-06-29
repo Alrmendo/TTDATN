@@ -1,5 +1,5 @@
 import { useState, FormEvent, useEffect } from 'react';
-import { Store, Employee, ApiAccount, ApiStore } from '../types';
+import { Store, ApiAccount, ApiStore } from '../types';
 import { roleLabels, roleLabelToEnum } from '../utils/roleMapping';
 import {
   Search,
@@ -28,11 +28,10 @@ import {
 const API_BASE = 'http://localhost:5000/api';
 
 interface AccountManagementProps {
-  employees: Employee[];
   stores: Store[];
 }
 
-export default function AccountManagement({ employees: _employees, stores: _stores }: AccountManagementProps) {
+export default function AccountManagement({ stores: _stores }: AccountManagementProps) {
   // API data
   const [apiStores, setApiStores] = useState<ApiStore[]>([]);
   const [apiAccounts, setApiAccounts] = useState<ApiAccount[]>([]);
