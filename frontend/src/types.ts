@@ -177,3 +177,80 @@ export interface ApiProduct {
   isActive: boolean;
   category?: { categoryName: string };
 }
+
+// ===== Inventory module (GET/PUT /api/inventory) =====
+
+export interface ApiStockItem {
+  id: string;
+  storeId: string;
+  productId: string;
+  productName: string | null;
+  sku: string | null;
+  categoryName: string | null;
+  price: number | null;
+  costPrice: number | null;
+  isActive: boolean | null;
+  quantity: number;
+  lowStockThreshold: number;
+  lastUpdated: string;
+}
+
+export interface ApiLowStockItem {
+  id: string;
+  storeId: string;
+  storeName: string | null;
+  productId: string;
+  productName: string | null;
+  sku: string | null;
+  quantity: number;
+  lowStockThreshold: number;
+}
+
+// ===== Report module (GET /api/report/revenue, /api/report/inventory) =====
+
+export interface ApiDailyRevenuePoint {
+  date: string; // 'YYYY-MM-DD'
+  amount: number;
+}
+
+export interface ApiTopProduct {
+  productId: string;
+  productName: string | null;
+  sku: string | null;
+  totalQuantity: number;
+  totalRevenue: number;
+}
+
+export interface ApiRevenueReport {
+  startDate: string;
+  endDate: string;
+  storeId: string | null;
+  totalRevenue: number;
+  totalDiscount: number;
+  totalSubtotal: number;
+  totalOrders: number;
+  averageOrderValue: number;
+  dailyRevenue: ApiDailyRevenuePoint[];
+  topProducts: ApiTopProduct[];
+}
+
+export interface ApiInventoryReportItem {
+  productId: string;
+  productName: string | null;
+  sku: string | null;
+  storeId: string;
+  storeName: string | null;
+  quantity: number;
+  lowStockThreshold: number;
+  isLowStock: boolean;
+  stockValue: number;
+}
+
+export interface ApiInventoryReport {
+  storeId: string | null;
+  totalProducts: number;
+  totalUnits: number;
+  totalStockValue: number;
+  lowStockCount: number;
+  items: ApiInventoryReportItem[];
+}

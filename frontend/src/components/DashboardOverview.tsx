@@ -1,6 +1,8 @@
-import { TrendingUp, ShoppingBag, AlertTriangle, Store, ArrowUpRight, DollarSign } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { TrendingUp, ShoppingBag, AlertTriangle, Store, ArrowUpRight, ArrowDownRight, DollarSign } from 'lucide-react';
 import { Invoice, Product } from '../types';
-import { last7DaysRevenue } from '../data';
+import { fetchLowStock, ApiLowStockItem } from '../services/inventoryApi';
+import { fetchRevenueReport, toDateParam } from '../services/reportApi';
 
 interface DashboardOverviewProps {
   invoices: Invoice[];
@@ -9,10 +11,88 @@ interface DashboardOverviewProps {
   onNavigate: (tab: string) => void;
 }
 
-export default function DashboardOverview({ invoices, products, storesCount, onNavigate }: DashboardOverviewProps) {
-  // Calculate analytics
-  const lowStockCount = products.filter(p => p.stock <= 5).length;
+interface DailyPoint {
+  date: string; // dd/mm label for the chart
+  amount: number;
+}
+
+export default function DashboardOverview({ invoices, products: _products, storesCount, onNavigate }: DashboardOverviewProps) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
+
+  const [lowStockItems, setLowStockItems] = useState<ApiLowStockItem[]>([]);
+  const [last7DaysRevenue, setLast7DaysRevenue] = useState<DailyPoint[]>([]);
+  const [todayRevenue, setTodayRevenue] = useState(0);
+  const [todayOrders, setTodayOrders] = useState(0);
+  const [yesterdayRevenue, setYesterdayRevenue] = useState(0);
+  const [yesterdayOrders, setYesterdayOrders] = useState(0);
+  const [monthRevenue, setMonthRevenue] = useState(0);
+
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      setIsLoading(true);
+      setFetchError('');
+      try {
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - 6);
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+        const todayStr = toDateParam(today);
+        const yesterdayStr = toDateParam(yesterday);
+        const weekStartStr = toDateParam(weekStart);
+        const monthStartStr = toDateParam(monthStart);
+
+        const [lowStock, todayReport, yesterdayReport, weekReport, monthReport] = await Promise.all([
+          fetchLowStock(),
+          fetchRevenueReport(todayStr, todayStr),
+          fetchRevenueReport(yesterdayStr, yesterdayStr),
+          fetchRevenueReport(weekStartStr, todayStr),
+          fetchRevenueReport(monthStartStr, todayStr),
+        ]);
+
+        setLowStockItems(lowStock);
+        setTodayRevenue(todayReport.totalRevenue);
+        setTodayOrders(todayReport.totalOrders);
+        setYesterdayRevenue(yesterdayReport.totalRevenue);
+        setYesterdayOrders(yesterdayReport.totalOrders);
+        setMonthRevenue(monthReport.totalRevenue);
+
+        // Backfill 7 ngày liên tiếp với 0đ cho những ngày không có dữ liệu trả về,
+        // để biểu đồ luôn có đủ 7 điểm dữ liệu liền mạch.
+        const dailyMap = new Map(weekReport.dailyRevenue.map((d) => [d.date, d.amount]));
+        const pointsList: DailyPoint[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date(today);
+          d.setDate(today.getDate() - i);
+          const isoKey = toDateParam(d);
+          pointsList.push({
+            date: `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`,
+            amount: dailyMap.get(isoKey) ?? 0,
+          });
+        }
+        setLast7DaysRevenue(pointsList);
+      } catch (err) {
+        setFetchError(err instanceof Error ? err.message : 'Không thể tải dữ liệu tổng quan');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadDashboardData();
+  }, []);
+
+  const lowStockCount = lowStockItems.length;
   const recentInvoices = invoices.slice(0, 5);
+
+  const revenueChangePct = yesterdayRevenue > 0
+    ? ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
+    : todayRevenue > 0 ? 100 : 0;
+  const ordersChangePct = yesterdayOrders > 0
+    ? ((todayOrders - yesterdayOrders) / yesterdayOrders) * 100
+    : todayOrders > 0 ? 100 : 0;
 
   // SVG Line Chart calculations
   const chartHeight = 160;
@@ -22,11 +102,12 @@ export default function DashboardOverview({ invoices, products, storesCount, onN
   const paddingTop = 20;
   const paddingBottom = 30;
 
-  const maxVal = Math.max(...last7DaysRevenue.map(d => d.amount)) * 1.1; // 10% headroom
+  const chartData = last7DaysRevenue.length > 0 ? last7DaysRevenue : [{ date: '', amount: 0 }];
+  const maxVal = Math.max(...chartData.map(d => d.amount), 1) * 1.1; // 10% headroom, avoid 0-division
   const minVal = 0;
 
-  const points = last7DaysRevenue.map((d, index) => {
-    const x = paddingLeft + (index / (last7DaysRevenue.length - 1)) * (chartWidth - paddingLeft - paddingRight);
+  const points = chartData.map((d, index) => {
+    const x = paddingLeft + (chartData.length > 1 ? (index / (chartData.length - 1)) * (chartWidth - paddingLeft - paddingRight) : 0);
     // Inverse relative Y since SVG 0,0 is top-left
     const y = paddingTop + (1 - (d.amount - minVal) / (maxVal - minVal)) * (chartHeight - paddingTop - paddingBottom);
     return { x, y, label: d.date, value: d.amount };
@@ -41,9 +122,16 @@ export default function DashboardOverview({ invoices, products, storesCount, onN
 
   return (
     <div className="space-y-6" id="dashboard-overview-container">
+
+      {fetchError && (
+        <div className="px-4 py-2.5 bg-red-50 border border-red-100 text-red-700 rounded-lg text-xs font-semibold">
+          {fetchError}
+        </div>
+      )}
+
       {/* 4 Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        
+
         {/* Doanh thu hôm nay */}
         <div id="stat-revenue" className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs hover:shadow-md transition duration-200">
           <div className="flex items-center justify-between">
@@ -53,14 +141,16 @@ export default function DashboardOverview({ invoices, products, storesCount, onN
             </div>
           </div>
           <div className="mt-4">
-            <h3 className="text-2xl font-bold text-gray-900">12,500,000 ₫</h3>
-            <p className="flex items-center text-xs font-semibold text-emerald-600 mt-1">
-              <span className="flex items-center mr-1">
-                <ArrowUpRight className="w-3 h-3 stroke-[2.5]" />
-                +14.2%
-              </span>
-              <span className="text-gray-400 font-normal">so với hôm qua</span>
-            </p>
+            <h3 className="text-2xl font-bold text-gray-900">{isLoading ? '—' : formatVND(todayRevenue)}</h3>
+            {!isLoading && (
+              <p className={`flex items-center text-xs font-semibold mt-1 ${revenueChangePct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                <span className="flex items-center mr-1">
+                  {revenueChangePct >= 0 ? <ArrowUpRight className="w-3 h-3 stroke-[2.5]" /> : <ArrowDownRight className="w-3 h-3 stroke-[2.5]" />}
+                  {revenueChangePct >= 0 ? '+' : ''}{revenueChangePct.toFixed(1)}%
+                </span>
+                <span className="text-gray-400 font-normal">so với hôm qua</span>
+              </p>
+            )}
           </div>
         </div>
 
@@ -73,19 +163,21 @@ export default function DashboardOverview({ invoices, products, storesCount, onN
             </div>
           </div>
           <div className="mt-4">
-            <h3 className="text-2xl font-bold text-gray-900">48</h3>
-            <p className="flex items-center text-xs font-semibold text-emerald-600 mt-1">
-              <span className="flex items-center mr-1">
-                <ArrowUpRight className="w-3 h-3 stroke-[2.5]" />
-                +8.5%
-              </span>
-              <span className="text-gray-400 font-normal">so với tuần trước</span>
-            </p>
+            <h3 className="text-2xl font-bold text-gray-900">{isLoading ? '—' : todayOrders}</h3>
+            {!isLoading && (
+              <p className={`flex items-center text-xs font-semibold mt-1 ${ordersChangePct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                <span className="flex items-center mr-1">
+                  {ordersChangePct >= 0 ? <ArrowUpRight className="w-3 h-3 stroke-[2.5]" /> : <ArrowDownRight className="w-3 h-3 stroke-[2.5]" />}
+                  {ordersChangePct >= 0 ? '+' : ''}{ordersChangePct.toFixed(1)}%
+                </span>
+                <span className="text-gray-400 font-normal">so với hôm qua</span>
+              </p>
+            )}
           </div>
         </div>
 
         {/* Sản phẩm sắp hết hàng */}
-        <div id="stat-low-stock" 
+        <div id="stat-low-stock"
           onClick={() => onNavigate('Sản phẩm')}
           className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs hover:shadow-md transition duration-200 cursor-pointer group"
         >
@@ -96,16 +188,16 @@ export default function DashboardOverview({ invoices, products, storesCount, onN
             </div>
           </div>
           <div className="mt-4">
-            <h3 className="text-2xl font-bold text-gray-950">{lowStockCount}</h3>
+            <h3 className="text-2xl font-bold text-gray-950">{isLoading ? '—' : lowStockCount}</h3>
             <p className="text-xs text-slate-500 font-normal mt-1 flex items-center justify-between">
-              <span>Định mức tồn kho dưới 5</span>
+              <span>Dưới ngưỡng cảnh báo tồn kho</span>
               <span className="text-[#3B82F6] hover:underline font-medium text-xs">Xem chi tiết &rarr;</span>
             </p>
           </div>
         </div>
 
         {/* Tổng chi nhánh */}
-        <div id="stat-stores" 
+        <div id="stat-stores"
           onClick={() => onNavigate('Chi nhánh')}
           className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs hover:shadow-md transition duration-200 cursor-pointer group"
         >
@@ -128,7 +220,7 @@ export default function DashboardOverview({ invoices, products, storesCount, onN
 
       {/* Charts & Warning list grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         {/* Line Chart showing revenue last 7 days */}
         <div id="revenue-chart-card" className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs lg:col-span-2">
           <div className="flex items-center justify-between mb-6">
@@ -138,92 +230,95 @@ export default function DashboardOverview({ invoices, products, storesCount, onN
             </div>
             <div className="flex items-center space-x-1 text-xs text-gray-600 bg-gray-50 p-1 border border-gray-100 rounded-lg">
               <span className="px-2.5 py-1 bg-white text-gray-800 font-semibold rounded-md shadow-xs">Hàng ngày</span>
-              <span className="px-2.5 py-1 font-normal opacity-60">Tuần trước</span>
             </div>
           </div>
 
           {/* SVG Line Chart (100% responsive wrapper) */}
           <div className="w-full h-48 overflow-visible">
-            <svg 
-              className="w-full h-full overflow-visible font-sans text-[10px] text-gray-400"
-              viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-              preserveAspectRatio="none"
-            >
-              <defs>
-                <linearGradient id="chart-area-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.15" />
-                  <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.0" />
-                </linearGradient>
-              </defs>
+            {isLoading ? (
+              <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">Đang tải dữ liệu doanh thu...</div>
+            ) : (
+              <svg
+                className="w-full h-full overflow-visible font-sans text-[10px] text-gray-400"
+                viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                preserveAspectRatio="none"
+              >
+                <defs>
+                  <linearGradient id="chart-area-grad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.15" />
+                    <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.0" />
+                  </linearGradient>
+                </defs>
 
-              {/* Grid Lines */}
-              {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
-                const y = paddingTop + ratio * (chartHeight - paddingTop - paddingBottom);
-                const valueLine = maxVal - ratio * (maxVal - minVal);
-                return (
-                  <g key={idx}>
-                    <line 
-                      x1={paddingLeft} 
-                      y1={y} 
-                      x2={chartWidth - paddingRight} 
-                      y2={y} 
-                      className="stroke-gray-100 stroke-1" 
-                      strokeDasharray="4 4"
-                    />
-                    <text 
-                      x={paddingLeft - 8} 
-                      y={y + 3} 
-                      className="fill-gray-400 text-right font-mono"
-                      textAnchor="end"
-                    >
-                      {Math.round(valueLine / 1000000)}M
-                    </text>
-                  </g>
-                );
-              })}
+                {/* Grid Lines */}
+                {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
+                  const y = paddingTop + ratio * (chartHeight - paddingTop - paddingBottom);
+                  const valueLine = maxVal - ratio * (maxVal - minVal);
+                  return (
+                    <g key={idx}>
+                      <line
+                        x1={paddingLeft}
+                        y1={y}
+                        x2={chartWidth - paddingRight}
+                        y2={y}
+                        className="stroke-gray-100 stroke-1"
+                        strokeDasharray="4 4"
+                      />
+                      <text
+                        x={paddingLeft - 8}
+                        y={y + 3}
+                        className="fill-gray-400 text-right font-mono"
+                        textAnchor="end"
+                      >
+                        {Math.round(valueLine / 1000000)}M
+                      </text>
+                    </g>
+                  );
+                })}
 
-              {/* Path and Area */}
-              <path d={areaD} fill="url(#chart-area-grad)" />
-              <path d={pathD} fill="none" stroke="#3B82F6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                {/* Path and Area */}
+                <path d={areaD} fill="url(#chart-area-grad)" />
+                <path d={pathD} fill="none" stroke="#3B82F6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
 
-              {/* Interactive Circles / Tooltips */}
-              {points.map((p, idx) => {
-                return (
-                  <g key={idx} className="group cursor-pointer">
-                    <circle 
-                      cx={p.x} 
-                      cy={p.y} 
-                      r="4" 
-                      className="fill-white stroke-[#3B82F6] stroke-2 hover:r-6 hover:fill-[#3B82F6] transition duration-200" 
-                    />
-                    {/* Tooltip on SVG hover */}
-                    <text
-                      x={p.x}
-                      y={p.y - 10}
-                      className="fill-gray-800 text-[10px] font-bold text-center opacity-0 group-hover:opacity-100 transition duration-150"
-                      textAnchor="middle"
-                    >
-                      {Math.round(p.value / 1000000)}M
-                    </text>
-                    {/* X-axis labels */}
-                    <text 
-                      x={p.x} 
-                      y={chartHeight - 12} 
-                      className="fill-gray-500 font-medium font-sans"
-                      textAnchor="middle"
-                    >
-                      {p.label}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
+                {/* Interactive Circles / Tooltips */}
+                {points.map((p, idx) => {
+                  return (
+                    <g key={idx} className="group cursor-pointer">
+                      <circle
+                        cx={p.x}
+                        cy={p.y}
+                        r="4"
+                        className="fill-white stroke-[#3B82F6] stroke-2 hover:r-6 hover:fill-[#3B82F6] transition duration-200"
+                      />
+                      {/* Tooltip on SVG hover */}
+                      <text
+                        x={p.x}
+                        y={p.y - 10}
+                        className="fill-gray-800 text-[10px] font-bold text-center opacity-0 group-hover:opacity-100 transition duration-150"
+                        textAnchor="middle"
+                      >
+                        {Math.round(p.value / 1000000)}M
+                      </text>
+                      {/* X-axis labels */}
+                      <text
+                        x={p.x}
+                        y={chartHeight - 12}
+                        className="fill-gray-500 font-medium font-sans"
+                        textAnchor="middle"
+                      >
+                        {p.label}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+            )}
           </div>
-          
+
           <div className="mt-2 flex items-center justify-between text-xs text-gray-500 border-t border-gray-100 pt-3">
             <span className="flex items-center space-x-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-[#3B82F6]"></span>
-              <span className="font-medium text-gray-600">Tháng này: 75.8M ₫</span>
+              <span className="font-medium text-gray-600">Tháng này: {isLoading ? '—' : formatVND(monthRevenue)}</span>
             </span>
             <span className="text-gray-400">Thời gian cập nhật: vừa mới xong</span>
           </div>
@@ -237,21 +332,27 @@ export default function DashboardOverview({ invoices, products, storesCount, onN
               <span className="text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-md font-semibold">Cảnh báo</span>
             </div>
             <div className="space-y-3 max-h-[190px] overflow-y-auto pr-1">
-              {products.filter(p => p.stock <= 5).map((p) => (
-                <div key={p.productId} className="flex justify-between items-center p-2.5 rounded-lg border border-amber-100 bg-amber-50/50 hover:bg-amber-50 transition text-xs">
+              {isLoading && (
+                <p className="text-xs text-gray-400 text-center py-6">Đang tải...</p>
+              )}
+              {!isLoading && lowStockItems.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-6">Không có sản phẩm nào sắp hết hàng.</p>
+              )}
+              {!isLoading && lowStockItems.map((item) => (
+                <div key={item.id} className="flex justify-between items-center p-2.5 rounded-lg border border-amber-100 bg-amber-50/50 hover:bg-amber-50 transition text-xs">
                   <div>
-                    <h4 className="font-semibold text-gray-800 line-clamp-1">{p.productName}</h4>
-                    <span className="text-[10px] text-gray-500 font-mono mt-0.5 block">{p.productId} • {p.category}</span>
+                    <h4 className="font-semibold text-gray-800 line-clamp-1">{item.productName}</h4>
+                    <span className="text-[10px] text-gray-500 font-mono mt-0.5 block">{item.sku} • {item.storeName}</span>
                   </div>
                   <div className="text-right">
-                    <span className="text-amber-800 font-bold font-mono text-sm">{p.stock}</span>
-                    <span className="text-[10px] text-gray-400 block">hộp/thùng</span>
+                    <span className="text-amber-800 font-bold font-mono text-sm">{item.quantity}</span>
+                    <span className="text-[10px] text-gray-400 block">/ {item.lowStockThreshold} ngưỡng</span>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-          
+
           <button
             onClick={() => onNavigate('Sản phẩm')}
             className="w-full mt-4 py-2 border border-blue-100 bg-blue-50/30 text-xs font-semibold text-[#3B82F6] rounded-lg hover:bg-[#3B82F6] hover:text-white transition duration-200"
@@ -269,7 +370,7 @@ export default function DashboardOverview({ invoices, products, storesCount, onN
             <h3 className="text-base font-bold text-gray-900">Đơn hàng gần đây</h3>
             <p className="text-xs text-gray-400">Danh sách các hóa đơn vừa hoàn thành hoặc đang xử lý trong ngày</p>
           </div>
-          <button 
+          <button
             onClick={() => onNavigate('Báo cáo')}
             className="text-xs font-semibold text-[#3B82F6] hover:text-blue-700 hover:underline flex items-center"
           >
@@ -305,7 +406,7 @@ export default function DashboardOverview({ invoices, products, storesCount, onN
                   <td className="px-5 py-3.5 text-right font-bold text-gray-950 font-mono text-[11px]">{formatVND(invoice.totalAmount)}</td>
                   <td className="px-5 py-3.5 text-center">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
-                      invoice.status === 'Hoàn thành' 
+                      invoice.status === 'Hoàn thành'
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
                         : invoice.status === 'Đang xử lý'
                         ? 'bg-blue-50 text-blue-700 border border-blue-100'

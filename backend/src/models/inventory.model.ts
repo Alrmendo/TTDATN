@@ -1,13 +1,38 @@
-import { Model, DataTypes, Transaction } from 'sequelize';
+// CONFIRMED from your models/index.ts that inventory.model.ts already exists
+// and exports `{ Inventory }`, with associations
+// (Inventory.belongsTo(Store), Inventory.belongsTo(Product) — no alias)
+// registered centrally in index.ts, NOT inside this file. This reference
+// matches that pattern — only use it to reconcile field names if your real
+// file's columns differ (e.g. if `lowStockThreshold`/`lastUpdated` are named
+// differently, or `adjustQuantity` isn't implemented yet per the README).
+
+import { DataTypes, Model, Optional, Transaction } from 'sequelize';
 import { sequelize } from '../config/database';
 
-export class Inventory extends Model {
-  declare id: string;
-  declare storeId: string;
-  declare productId: string;
-  declare quantity: number;
-  declare lowStockThreshold: number;
-  declare lastUpdated: Date;
+interface InventoryAttributes {
+  id: string;
+  storeId: string;
+  productId: string;
+  quantity: number;
+  lowStockThreshold: number;
+  lastUpdated: Date;
+}
+
+type InventoryCreationAttributes = Optional<
+  InventoryAttributes,
+  'id' | 'quantity' | 'lowStockThreshold' | 'lastUpdated'
+>;
+
+class Inventory
+  extends Model<InventoryAttributes, InventoryCreationAttributes>
+  implements InventoryAttributes
+{
+  public id!: string;
+  public storeId!: string;
+  public productId!: string;
+  public quantity!: number;
+  public lowStockThreshold!: number;
+  public lastUpdated!: Date;
 
   /**
    * `transaction` MUST be passed through when the caller already holds a
@@ -36,10 +61,14 @@ Inventory.init(
   },
   {
     sequelize,
+    modelName: 'Inventory',
     tableName: 'inventory',
     timestamps: false,
-    indexes: [
-      { unique: true, fields: ['storeId', 'productId'] },
-    ],
+    indexes: [{ unique: true, fields: ['storeId', 'productId'] }],
   }
 );
+
+// NOTE: associations (belongsTo Store/Product) are registered in models/index.ts,
+// not here — keep it that way, don't duplicate them in this file.
+
+export { Inventory };
