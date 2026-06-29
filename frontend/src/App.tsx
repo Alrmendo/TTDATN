@@ -754,7 +754,7 @@ const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
                     <AccountManagement stores={initialStores} />
                   )}
                   {activeTab === 'Báo cáo' && (
-                    <RevenueReport invoices={invoices} products={products} />
+                    <RevenueReport />
                   )}
                 </>
               )}
