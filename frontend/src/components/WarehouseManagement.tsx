@@ -1,5 +1,5 @@
 import { useState, FormEvent, useEffect, useCallback } from 'react';
-import { Product, PurchaseOrder, Store } from '../types';
+import { Store } from '../types';
 import { fetchStockByStore, setInventoryQuantity, ApiStockItem } from '../services/inventoryApi';
 import {
   Boxes,
@@ -9,14 +9,11 @@ import {
   Search,
   Edit,
   RefreshCw,
-  ArrowLeftRight,
   X,
   Plus,
-  TrendingUp,
   Check,
   ShoppingBag,
   Truck,
-  Building,
   Calendar,
   Loader2
 } from 'lucide-react';
@@ -87,26 +84,18 @@ interface ReceivedItem {
 // ─── Original component props ─────────────────────────────────────────────────
 
 interface WarehouseManagementProps {
-  products: Product[];
-  purchaseOrders: PurchaseOrder[];
   stores: Store[];
-  activeTab: 'Tồn kho' | 'Đơn nhập hàng' | 'Điều chuyển hàng';
+  activeTab: 'Tồn kho' | 'Đơn nhập hàng';
   onAdjustStock: (productId: string, newStock: number) => void;
-  onConfirmPurchaseOrder: (orderId: string) => void;
-  onAddNewPurchaseOrder?: (po: PurchaseOrder) => void;
   userRole?: string;
   /** storeId của nhân viên kho đang đăng nhập (Manager bỏ trống, tự chọn chi nhánh bằng dropdown) */
   currentUserStoreId?: string | null;
 }
 
 export default function WarehouseManagement({
-  products,
-  purchaseOrders,
   stores,
   activeTab,
   onAdjustStock,
-  onConfirmPurchaseOrder,
-  onAddNewPurchaseOrder,
   userRole = 'Nhân viên kho',
   currentUserStoreId = null
 }: WarehouseManagementProps) {
@@ -151,24 +140,6 @@ export default function WarehouseManagement({
   // Modal active states (điều chỉnh tồn kho thực tế — dùng dữ liệu API)
   const [editingStockItem, setEditingStockItem] = useState<ApiStockItem | null>(null);
   const [newStockVal, setNewStockVal] = useState(0);
-
-  // Stock Transfer state
-  const [transferSource, setTransferSource] = useState('CH001');
-  const [transferDest, setTransferDest] = useState('CH002');
-  const [transferProduct, setTransferProduct] = useState(products[0]?.productId || '');
-  const [transferQty, setTransferQty] = useState(5);
-  const [transfers, setTransfers] = useState([
-    { id: 'DC001', from: 'Chi nhánh Quận 1', to: 'Chi nhánh Thảo Điền', product: 'Gạo ST25 Thượng Hạng (5kg)', qty: 10, date: '2026-05-18', status: 'Hoàn thành' },
-    { id: 'DC002', from: 'Chi nhánh Thảo Điền', to: 'Chi nhánh Bình Thạnh', product: 'Mì Tôm Hảo Hảo Chua Cay (Thùng 30 gói)', qty: 15, date: '2026-05-19', status: 'Chờ xác nhận' },
-    { id: 'DC003', from: 'Chi nhánh Bình Thạnh', to: 'Chi nhánh Quận 1', product: 'Sữa tươi tiệt trùng Vinamilk 180ml', qty: 25, date: '2026-05-20', status: 'Chờ xác nhận' },
-    { id: 'DC004', from: 'Chi nhánh Quận 1', to: 'Chi nhánh Bình Thạnh', product: 'Nước rửa chén Sunlight Chanh 3.6kg', qty: 8, date: '2026-05-20', status: 'Hoàn thành' },
-  ]);
-
-  const [transferStatusFilter, setTransferStatusFilter] = useState<'Tất cả' | 'Chờ xác nhận' | 'Hoàn thành'>('Tất cả');
-  const [transferCurrentPage, setTransferCurrentPage] = useState(1);
-  const transferItemsPerPage = 5;
-  const [selectedTransfer, setSelectedTransfer] = useState<any | null>(null);
-  const [isCreatingTransfer, setIsCreatingTransfer] = useState(false);
 
   // Toast / Notification status
   const [notification, setNotification] = useState<string | null>(null);
@@ -242,9 +213,6 @@ export default function WarehouseManagement({
 
   useEffect(() => { setPoCurrentPage(1); }, [poSearch, poStatusFilter]);
 
-  useEffect(() => {
-    setTransferCurrentPage(1);
-  }, [transferStatusFilter]);
 
   // ─── Fetch stores (Manager) ──────────────────────────────────────────────────
   useEffect(() => {
@@ -469,54 +437,6 @@ export default function WarehouseManagement({
     setNewStockVal(item.quantity);
   };
 
-  // Handle custom branch stock transfers
-  const handleCreateTransfer = (e: FormEvent) => {
-    e.preventDefault();
-    if (transferSource === transferDest) {
-      alert('Chi nhánh nguồn và chi nhánh nhận hàng không thể trùng nhau!');
-      return;
-    }
-
-    const prodObj = products.find(p => p.productId === transferProduct);
-    if (!prodObj) return;
-
-    if (prodObj.stock < transferQty) {
-      alert(`Số lượng sản phẩm trong kho không đủ để điều chuyển! Chỉ còn lại ${prodObj.stock} sp.`);
-      return;
-    }
-
-    // Deduct stock levels locally when creating
-    onAdjustStock(prodObj.productId, prodObj.stock - transferQty);
-
-    const newTransfer = {
-      id: `DC${String(transfers.length + 1).padStart(3, '0')}`,
-      from: stores.find(s => s.id === transferSource)?.storeName || 'Chi nhánh Quận 1',
-      to: stores.find(s => s.id === transferDest)?.storeName || 'Chi nhánh Thảo Điền',
-      product: prodObj.productName,
-      qty: transferQty,
-      date: '2026-05-20',
-      status: 'Chờ xác nhận'
-    };
-
-    setTransfers([newTransfer, ...transfers]);
-    setIsCreatingTransfer(false);
-    triggerNotification(`Đã tạo yêu cầu điều chuyển ${transferQty} sp '${prodObj.productName}' sang ${newTransfer.to} (Chờ xác nhận)!`);
-  };
-
-  // Handle confirming a stock transfer receipt
-  const handleConfirmTransfer = (id: string) => {
-    const transferIndex = transfers.findIndex(t => t.id === id);
-    if (transferIndex > -1) {
-      const updated = [...transfers];
-      updated[transferIndex] = {
-        ...updated[transferIndex],
-        status: 'Hoàn thành'
-      };
-      setTransfers(updated);
-      triggerNotification(`Đã xác nhận nhận hàng và nhập kho thành công cho phiếu điều chuyển ${id}!`);
-    }
-  };
-
   // ─── Computed: Đơn nhập hàng (lọc/sắp xếp đã thực hiện ở server qua fetchOrders) ──
   const filteredPOList = apiOrders;
   const totalPOItems = filteredPOList.length;
@@ -524,17 +444,6 @@ export default function WarehouseManagement({
   const indexOfLastPOItem = poCurrentPage * poItemsPerPage;
   const indexOfFirstPOItem = indexOfLastPOItem - poItemsPerPage;
   const currentPOItems = filteredPOList.slice(indexOfFirstPOItem, indexOfLastPOItem);
-
-  // ─── Computed: Điều chuyển hàng ──────────────────────────────────────────────
-  const filteredTransfers = transfers.filter(tr => {
-    const matchesStatus = transferStatusFilter === 'Tất cả' || tr.status === transferStatusFilter;
-    return matchesStatus;
-  });
-  const totalTrItems = filteredTransfers.length;
-  const totalTrPages = Math.ceil(totalTrItems / transferItemsPerPage) || 1;
-  const indexOfLastTrItem = transferCurrentPage * transferItemsPerPage;
-  const indexOfFirstTrItem = indexOfLastTrItem - transferItemsPerPage;
-  const currentTransfersList = filteredTransfers.slice(indexOfFirstTrItem, indexOfLastTrItem);
 
   return (
     <div className="space-y-6">
@@ -545,12 +454,10 @@ export default function WarehouseManagement({
           <h2 className="text-xl font-bold text-gray-950 tracking-tight" id="warehouse-page-title">
             {activeTab === 'Tồn kho' && "Quản lý tồn kho"}
             {activeTab === 'Đơn nhập hàng' && "Quản lý đơn nhập hàng"}
-            {activeTab === 'Điều chuyển hàng' && "Yêu cầu điều chuyển chi nhánh"}
           </h2>
           <p className="text-xs text-gray-500 mt-1">
             {activeTab === 'Tồn kho' && "Theo dõi mức độ dữ trữ, thông tin định mức kiểm kê và cảnh báo hết hàng tự động."}
             {activeTab === 'Đơn nhập hàng' && "Quá trình giao nhận lô hàng mua lẻ từ nhà cung cấp liên kết ngoài vào sổ lưu trữ."}
-            {activeTab === 'Điều chuyển hàng' && "Luân chuyển nội bộ giữa hệ thống các siêu thị đảm bảo cung ứng nhu cầu mua sắm."}
           </p>
         </div>
 
@@ -972,219 +879,6 @@ export default function WarehouseManagement({
         </div>
       )}
 
-      {/* ================= VIEW 3: ĐIỀU CHUYỂN HÀNG ================= */}
-      {activeTab === 'Điều chuyển hàng' && (
-        <div className="space-y-6 animate-fadeIn text-xs">
-          
-          {/* Header Title Section */}
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between pb-2 border-b border-gray-200 gap-2">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 font-sans tracking-tight">Điều chuyển hàng giữa chi nhánh</h2>
-              <p className="text-xs text-gray-400 mt-1">Quản lý, cấp lệnh và ký nhận vận chuyển hàng hóa nội bộ giữa các chi nhánh siêu thị.</p>
-            </div>
-          </div>
-
-          {/* Top Action Bar */}
-          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-3xs flex flex-col md:flex-row items-center justify-between gap-4">
-            
-            {/* Status Filter */}
-            <div className="flex items-center space-x-2 w-full md:w-auto">
-              <span className="text-gray-500 font-bold whitespace-nowrap">Trạng thái:</span>
-              <select
-                value={transferStatusFilter}
-                onChange={(e) => setTransferStatusFilter(e.target.value as any)}
-                className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-xs font-semibold"
-              >
-                <option value="Tất cả">Tất cả</option>
-                <option value="Chờ xác nhận">Chờ xác nhận</option>
-                <option value="Hoàn thành">Hoàn thành</option>
-              </select>
-            </div>
-
-            {/* Action Button: Tạo yêu cầu điều chuyển */}
-            <div className="w-full md:w-auto text-right">
-              <button
-                type="button"
-                disabled={!isManager}
-                onClick={() => setIsCreatingTransfer(true)}
-                className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg text-xs font-extrabold transition uppercase tracking-wider ${
-                  isManager 
-                    ? 'bg-[#3B82F6] hover:bg-blue-600 text-white cursor-pointer shadow-xs shadow-blue-500/10' 
-                    : 'bg-gray-150 text-gray-400 cursor-not-allowed border border-gray-200'
-                }`}
-                title={!isManager ? 'Chỉ Quản lý mới có quyền tạo yêu cầu điều chuyển' : 'Tạo yêu cầu điều chuyển'}
-              >
-                <ArrowLeftRight className="w-4 h-4" />
-                <span>Tạo yêu cầu điều chuyển</span>
-                {!isManager && <span className="text-[9px] font-normal lowercase bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded ml-1">Quản lý</span>}
-              </button>
-            </div>
-
-          </div>
-
-          {/* Table or Data Grid block */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-3xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-50/70 border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
-                    <th className="py-3 px-4 font-black">Mã phiếu</th>
-                    <th className="py-3 px-4 font-black">Từ chi nhánh</th>
-                    <th className="py-3 px-4 font-black">Đến chi nhánh</th>
-                    <th className="py-3 px-4 font-black">Sản phẩm</th>
-                    <th className="py-3 px-4 font-black">Số lượng</th>
-                    <th className="py-3 px-4 font-black">Ngày tạo</th>
-                    <th className="py-3 px-4 font-black">Trạng thái</th>
-                    <th className="py-3 px-4 font-black text-right">Hành động</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-150">
-                  {currentTransfersList.map((tr) => {
-                    const isPending = tr.status === 'Chờ xác nhận';
-                    const isCompleted = tr.status === 'Hoàn thành';
-
-                    return (
-                      <tr key={tr.id} className="hover:bg-gray-50/50 transition">
-                        {/* Mã phiếu */}
-                        <td className="py-3.5 px-4 font-bold text-[#3B82F6] font-mono text-xs">
-                          {tr.id}
-                        </td>
-
-                        {/* Từ chi nhánh */}
-                        <td className="py-3.5 px-4 font-semibold text-gray-900">
-                          {tr.from}
-                        </td>
-
-                        {/* Đến chi nhánh */}
-                        <td className="py-3.5 px-4 font-semibold text-gray-900">
-                          {tr.to}
-                        </td>
-
-                        {/* Sản phẩm */}
-                        <td className="py-3.5 px-4 text-gray-650 font-bold">
-                          {tr.product}
-                        </td>
-
-                        {/* Số lượng */}
-                        <td className="py-3.5 px-4 font-bold text-gray-950 font-mono text-xs">
-                          {tr.qty} sp
-                        </td>
-
-                        {/* Ngày tạo */}
-                        <td className="py-3.5 px-4 text-gray-500 font-mono">
-                          {tr.date}
-                        </td>
-
-                        {/* Trạng thái */}
-                        <td className="py-3.5 px-4">
-                          {isPending ? (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-orange-850 border border-orange-200 shadow-2xs">
-                              <span className="w-1.5 h-1.5 rounded-full bg-orange-600 mr-1.5 animate-pulse"></span>
-                              Chờ xác nhận
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-850 border border-emerald-250 shadow-2xs">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-650 mr-1.5"></span>
-                              Hoàn thành
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Hành động */}
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="inline-flex items-center justify-end gap-2">
-                            
-                            {/* Xác nhận nhận hàng */}
-                            {isPending && (
-                              <button
-                                type="button"
-                                onClick={() => handleConfirmTransfer(tr.id)}
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition shadow-3xs flex items-center space-x-1"
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                                <span>Xác nhận nhận hàng</span>
-                              </button>
-                            )}
-
-                            {/* Xem chi tiết */}
-                            <button
-                              type="button"
-                              onClick={() => setSelectedTransfer(tr)}
-                              className="px-3 py-1.5 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-[11px] font-bold transition"
-                            >
-                              Xem chi tiết
-                            </button>
-
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  {currentTransfersList.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="py-12 bg-white text-center text-gray-400 font-bold">
-                        <ArrowLeftRight className="w-10 h-10 text-gray-300 mx-auto stroke-1 mb-2 animate-pulse" />
-                        <p className="text-xs font-bold text-gray-500">Không tìm thấy phiếu điều chuyển hàng nào.</p>
-                        <p className="text-[10px] text-gray-400 font-normal mt-1">Kiểm định lại bộ lọc trạng thái để rà soát chứng từ lỗi.</p>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination footer */}
-            {totalTrItems > 0 && (
-              <div className="bg-gray-50 border-t border-gray-200 px-4 py-3.5 flex items-center justify-between">
-                <div className="text-gray-500 font-semibold text-[11px]">
-                  Hiển thị <span className="font-bold text-gray-900">{indexOfFirstTrItem + 1}</span> - <span className="font-bold text-gray-900">{Math.min(indexOfLastTrItem, totalTrItems)}</span> trong số <span className="font-bold text-gray-900">{totalTrItems}</span> vận đơn chuyển
-                </div>
-                
-                <div className="flex items-center space-x-1.5">
-                  {/* Quay lại button */}
-                  <button
-                    type="button"
-                    disabled={transferCurrentPage === 1}
-                    onClick={() => setTransferCurrentPage(prev => Math.max(1, prev - 1))}
-                    className="px-3 py-1.5 border border-gray-300 text-gray-750 font-bold rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-transparent transition text-[11px] cursor-pointer disabled:cursor-not-allowed"
-                  >
-                    Quay lại
-                  </button>
-
-                  {/* Page indexes */}
-                  {Array.from({ length: totalTrPages }, (_, i) => i + 1).map((pageNum) => (
-                    <button
-                      key={pageNum}
-                      type="button"
-                      onClick={() => setTransferCurrentPage(pageNum)}
-                      className={`w-7.5 h-7.5 flex items-center justify-center font-bold text-xs rounded-lg transition ${
-                        transferCurrentPage === pageNum 
-                          ? 'bg-[#3B82F6] text-white' 
-                          : 'border border-gray-300 text-gray-750 hover:bg-gray-50'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  ))}
-
-                  {/* Tiếp theo button */}
-                  <button
-                    type="button"
-                    disabled={transferCurrentPage === totalTrPages}
-                    onClick={() => setTransferCurrentPage(prev => Math.min(totalTrPages, prev + 1))}
-                    className="px-3 py-1.5 border border-gray-300 text-gray-750 font-bold rounded-lg hover:bg-gray-100 disabled:opacity-50 disabled:hover:bg-transparent transition text-[11px] cursor-pointer disabled:cursor-not-allowed"
-                  >
-                    Tiếp theo
-                  </button>
-
-                </div>
-              </div>
-            )}
-          </div>
-
-        </div>
-      )}
 
       {/* ================= MODAL DIALOG: CẬP NHẬT TỒN KHO THỰC TẾ ================= */}
       {editingStockItem && (
@@ -1584,215 +1278,7 @@ export default function WarehouseManagement({
         </div>
       )}
 
-      {/* ================= MODAL DIALOG: CHI TIẾT ĐIỀU CHUYỂN HÀNG ================= */}
-      {selectedTransfer && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="relative bg-white max-w-lg w-full rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-scaleIn text-xs">
-            
-            {/* Header */}
-            <div className="p-5 border-b border-gray-200 flex items-center justify-between bg-gray-50">
-              <div>
-                <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest flex items-center">
-                  <ArrowLeftRight className="w-4 h-4 mr-2 text-[#3B82F6]" />
-                  Chi tiết phiếu điều chuyển hàng
-                </h3>
-                <p className="text-[10px] text-gray-400 mt-0.5 font-medium">Mã vận đơn nội bộ: <span className="font-mono font-bold text-gray-600">{selectedTransfer.id}</span></p>
-              </div>
-              <button 
-                onClick={() => setSelectedTransfer(null)}
-                className="p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-700 rounded-full transition"
-              >
-                <X className="w-4.5 h-4.5" />
-              </button>
-            </div>
 
-            {/* Content Body */}
-            <div className="p-5 space-y-5 text-gray-700">
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-gray-50 rounded-xl space-y-1">
-                  <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Từ chi nhánh</span>
-                  <span className="font-extrabold text-gray-900 text-xs block">{selectedTransfer.from}</span>
-                </div>
-
-                <div className="p-3 bg-gray-50 rounded-xl space-y-1">
-                  <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider font-semibold">Đến chi nhánh</span>
-                  <span className="font-extrabold text-gray-900 text-xs block">{selectedTransfer.to}</span>
-                </div>
-
-                <div className="p-3 bg-gray-50 rounded-xl space-y-1">
-                  <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Sản phẩm luân chuyển</span>
-                  <span className="font-semibold text-gray-900 text-xs block">{selectedTransfer.product}</span>
-                </div>
-
-                <div className="p-3 bg-gray-50 rounded-xl space-y-1">
-                  <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Số lượng luân chuyển</span>
-                  <span className="font-black text-blue-600 text-xs block font-mono">{selectedTransfer.qty} sản phẩm</span>
-                </div>
-
-                <div className="p-3 bg-gray-50 rounded-xl space-y-1 col-span-2">
-                  <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Ngày tạo phiếu</span>
-                  <span className="font-semibold text-gray-800 text-xs block font-mono">{selectedTransfer.date}</span>
-                </div>
-              </div>
-
-              {/* Progress */}
-              <div className="p-4 bg-gray-50 rounded-xl space-y-3">
-                <h4 className="font-bold text-gray-950 uppercase tracking-wide text-[10px]">Tiến độ hành trình luân chuyển</h4>
-                <div className="space-y-4 relative pl-4 border-l-2 border-blue-500/30">
-                  <div className="relative">
-                    <span className="absolute -left-[22px] top-1 bg-blue-500 w-3 h-3 rounded-full border-2 border-white"></span>
-                    <div className="font-bold text-gray-800 text-xs">Yêu cầu được lập</div>
-                    <p className="text-[10.5px] text-gray-400 mt-0.5">Phiếu xuất kho điều chuyển sang chi nhánh khác đã được phê duyệt.</p>
-                  </div>
-                  <div className="relative">
-                    {selectedTransfer.status === 'Chờ xác nhận' ? (
-                      <>
-                        <span className="absolute -left-[22px] top-1 bg-orange-400 w-3 h-3 rounded-full border-2 border-white animate-pulse"></span>
-                        <div className="font-bold text-orange-600 text-xs">Đang vận chuyển & Chờ thủ kho nhận hàng xác nhận</div>
-                        <p className="text-[10.5px] text-gray-400 mt-0.5">Hàng hóa đang trên xe trung chuyển hoặc đã đến nơi chờ dỡ xuống kho đích.</p>
-                      </>
-                    ) : (
-                      <>
-                        <span className="absolute -left-[22px] top-1 bg-emerald-500 w-3 h-3 rounded-full border-2 border-white"></span>
-                        <div className="font-bold text-emerald-600 text-xs">Hoàn thành nhập kho đích</div>
-                        <p className="text-[10.5px] text-gray-400 mt-0.5">Thủ kho chi nhánh nhận hàng điện tử đã ký duyệt biên bản bàn giao, hàng hóa lưu kho đích thành công.</p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end space-x-2">
-              {selectedTransfer.status === 'Chờ xác nhận' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleConfirmTransfer(selectedTransfer.id);
-                    setSelectedTransfer(null);
-                  }}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition shadow-xs flex items-center space-x-1"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Xác nhận nhận hàng</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setSelectedTransfer(null)}
-                className="px-5 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 font-bold transition text-xs"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ================= MODAL DIALOG: TẠO MỚI PHIẾU ĐIỀU CHUYỂN ================= */}
-      {isCreatingTransfer && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="relative bg-white max-w-md w-full rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-scaleIn text-xs">
-            
-            {/* Header */}
-            <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/80">
-              <div>
-                <h3 className="text-xs font-bold text-gray-900 uppercase tracking-widest">Lập lệnh điều chuyển nội bộ</h3>
-                <p className="text-[10px] text-gray-400 mt-1">Điều chuyển số lượng sản phẩm giữa các chi nhánh siêu thị</p>
-              </div>
-              <button 
-                onClick={() => setIsCreatingTransfer(false)}
-                className="p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-700 rounded-full transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Form */}
-            <form onSubmit={handleCreateTransfer} className="p-5 space-y-4 text-xs font-medium">
-              
-              {/* Product selection */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-gray-500 uppercase">Mặt hàng điều động</label>
-                <select
-                  value={transferProduct}
-                  onChange={(e) => setTransferProduct(e.target.value)}
-                  className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-bold"
-                >
-                  {products.map(p => (
-                    <option key={p.productId} value={p.productId}>
-                      {p.productName} (Kho có: {p.stock} sp)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Source & Destination */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase font-semibold">Từ chi nhánh</label>
-                  <select
-                    value={transferSource}
-                    onChange={(e) => setTransferSource(e.target.value)}
-                    className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-955 font-bold animate-pulse"
-                  >
-                    {stores.map(s => (
-                      <option key={s.id} value={s.id}>{s.storeName}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Đến chi nhánh</label>
-                  <select
-                    value={transferDest}
-                    onChange={(e) => setTransferDest(e.target.value)}
-                    className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-955 font-bold"
-                  >
-                    {stores.map(s => (
-                      <option key={s.id} value={s.id}>{s.storeName}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Quantity */}
-              <div className="space-y-1">
-                <label className="block text-[10px] font-bold text-gray-500 uppercase">Số lượng điều chuyển</label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={transferQty}
-                  onChange={(e) => setTransferQty(parseInt(e.target.value) || 1)}
-                  className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-mono font-bold"
-                />
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex justify-end space-x-2 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingTransfer(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-bold transition"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[#3B82F6] hover:bg-blue-600 font-bold text-white rounded-lg transition"
-                >
-                  Xác nhận lập lệnh
-                </button>
-              </div>
-
-            </form>
-          </div>
-        </div>
-      )}
 
     </div>
   );

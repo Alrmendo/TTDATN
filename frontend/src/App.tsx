@@ -721,18 +721,14 @@ const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
                   )}
                   {activeTab === 'Đơn nhập hàng' && (
                     <WarehouseManagement
-                      products={products}
-                      purchaseOrders={purchaseOrders}
                       stores={initialStores}
                       activeTab="Đơn nhập hàng"
                       userRole={userRole}
-                      onConfirmPurchaseOrder={handleConfirmPurchaseOrder}
                       onAdjustStock={(productId, newStock) => {
                         setProducts(prev => prev.map(p =>
                           p.productId === productId ? { ...p, stock: newStock } : p
                         ));
                       }}
-                      onAddNewPurchaseOrder={(po) => setPurchaseOrders([po, ...purchaseOrders])}
                     />
                   )}
                   {activeTab === 'Điều chuyển hàng' && (
@@ -798,19 +794,15 @@ const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
               )}
               {userRole === 'Nhân viên kho' && activeTab !== 'Điều chuyển hàng' && (
                 <WarehouseManagement
-                  products={products}
-                  purchaseOrders={purchaseOrders}
                   stores={initialStores}
-                  activeTab={activeTab as any}
+                  activeTab={activeTab as 'Tồn kho' | 'Đơn nhập hàng'}
                   userRole={userRole}
-				  currentUserStoreId={currentUser?.storeId ?? null}
-                  onConfirmPurchaseOrder={handleConfirmPurchaseOrder}
+                  currentUserStoreId={currentUser?.storeId ?? null}
                   onAdjustStock={(productId, newStock) => {
                     setProducts(prevProducts => prevProducts.map(p =>
                       p.productId === productId ? { ...p, stock: newStock } : p
                     ));
                   }}
-                  onAddNewPurchaseOrder={(po) => setPurchaseOrders([po, ...purchaseOrders])}
                 />
               )}
 
