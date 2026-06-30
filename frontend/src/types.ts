@@ -165,6 +165,7 @@ export interface ApiInvoice {
   invoiceDetails?: ApiInvoiceDetail[];
   customer?: ApiCustomer | null;
   staff?: { fullName: string };
+  store?: { storeName: string };
   promotion?: ApiPromotion | null;
 }
 

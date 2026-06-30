@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { Op, fn, col } from 'sequelize';
 import { sequelize } from '../config/database';
 import { OrderService } from '../services/OrderService';
-import { Invoice, InvoiceDetail, Customer, User, Promotion, Product } from '../models';
+import { Invoice, InvoiceDetail, Customer, User, Promotion, Product, Store } from '../models';
 
 export const createOrder = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -130,6 +130,7 @@ export const getInvoices = async (req: Request, res: Response): Promise<void> =>
         { model: Customer, as: 'customer', attributes: ['fullName', 'phone'] },
         { model: User, as: 'staff', attributes: ['fullName'] },
         { model: Promotion, as: 'promotion', attributes: ['name'] },
+        { model: Store, as: 'store', attributes: ['storeName'] },
       ],
       order: [['createdAt', 'DESC']],
     });

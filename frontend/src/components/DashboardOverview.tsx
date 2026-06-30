@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, ShoppingBag, AlertTriangle, Store, ArrowUpRight, ArrowDownRight, DollarSign } from 'lucide-react';
-import { Invoice, Product } from '../types';
+import { Invoice, Product, ApiInvoice } from '../types';
 import { fetchLowStock, ApiLowStockItem } from '../services/inventoryApi';
 import { fetchRevenueReport, toDateParam } from '../services/reportApi';
+import { getStores } from '../services/store.service';
 
 interface DashboardOverviewProps {
   invoices: Invoice[];
@@ -16,11 +17,13 @@ interface DailyPoint {
   amount: number;
 }
 
-export default function DashboardOverview({ invoices, products: _products, storesCount, onNavigate }: DashboardOverviewProps) {
+export default function DashboardOverview({ invoices: _invoices, products: _products, storesCount: _storesCount, onNavigate }: DashboardOverviewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
 
   const [lowStockItems, setLowStockItems] = useState<ApiLowStockItem[]>([]);
+  const [storesCount, setStoresCount] = useState(0);
+  const [recentInvoices, setRecentInvoices] = useState<ApiInvoice[]>([]);
   const [last7DaysRevenue, setLast7DaysRevenue] = useState<DailyPoint[]>([]);
   const [todayRevenue, setTodayRevenue] = useState(0);
   const [todayOrders, setTodayOrders] = useState(0);
@@ -45,15 +48,24 @@ export default function DashboardOverview({ invoices, products: _products, store
         const weekStartStr = toDateParam(weekStart);
         const monthStartStr = toDateParam(monthStart);
 
-        const [lowStock, todayReport, yesterdayReport, weekReport, monthReport] = await Promise.all([
+        const [lowStock, storesRes, todayReport, yesterdayReport, weekReport, monthReport, invoicesData] = await Promise.all([
           fetchLowStock(),
+          getStores(),
           fetchRevenueReport(todayStr, todayStr),
           fetchRevenueReport(yesterdayStr, yesterdayStr),
           fetchRevenueReport(weekStartStr, todayStr),
           fetchRevenueReport(monthStartStr, todayStr),
+          fetch('http://localhost:5000/api/invoices', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+          }).then(r => {
+            if (!r.ok) throw new Error('Lỗi tải đơn hàng');
+            return r.json() as Promise<ApiInvoice[]>;
+          }),
         ]);
 
         setLowStockItems(lowStock);
+        setStoresCount(storesRes.data.length);
+        setRecentInvoices((invoicesData as ApiInvoice[]).filter(inv => inv.status === 'completed').slice(0, 5));
         setTodayRevenue(todayReport.totalRevenue);
         setTodayOrders(todayReport.totalOrders);
         setYesterdayRevenue(yesterdayReport.totalRevenue);
@@ -85,7 +97,6 @@ export default function DashboardOverview({ invoices, products: _products, store
   }, []);
 
   const lowStockCount = lowStockItems.length;
-  const recentInvoices = invoices.slice(0, 5);
 
   const revenueChangePct = yesterdayRevenue > 0
     ? ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
@@ -393,29 +404,21 @@ export default function DashboardOverview({ invoices, products: _products, store
             </thead>
             <tbody className="divide-y divide-gray-100 font-medium">
               {recentInvoices.map((invoice) => (
-                <tr key={invoice.invoiceId} className="hover:bg-gray-50/70 transition">
-                  <td className="px-5 py-3.5 text-black font-bold font-mono text-[11px]">{invoice.invoiceId}</td>
-                  <td className="px-5 py-3.5 text-gray-500">{invoice.storeName}</td>
+                <tr key={invoice.id} className="hover:bg-gray-50/70 transition">
+                  <td className="px-5 py-3.5 text-black font-bold font-mono text-[11px]">{invoice.id.slice(0, 8)}…</td>
+                  <td className="px-5 py-3.5 text-gray-500">{invoice.store?.storeName ?? '—'}</td>
                   <td className="px-5 py-3.5 text-gray-800 flex items-center space-x-2">
                     <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 grid place-content-center text-[9px] font-bold uppercase">
-                      {invoice.staffName.split(' ').slice(-1)[0][0]}
+                      {(invoice.staff?.fullName ?? '').split(' ').slice(-1)[0]?.[0] ?? '?'}
                     </span>
-                    <span>{invoice.staffName}</span>
+                    <span>{invoice.staff?.fullName ?? '—'}</span>
                   </td>
-                  <td className="px-5 py-3.5 text-gray-700">{invoice.customerName || 'Khách vãng lai'}</td>
+                  <td className="px-5 py-3.5 text-gray-700">{invoice.customer?.fullName || 'Khách vãng lai'}</td>
                   <td className="px-5 py-3.5 text-right font-bold text-gray-950 font-mono text-[11px]">{formatVND(invoice.totalAmount)}</td>
                   <td className="px-5 py-3.5 text-center">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
-                      invoice.status === 'Hoàn thành'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                        : invoice.status === 'Đang xử lý'
-                        ? 'bg-blue-50 text-blue-700 border border-blue-100'
-                        : 'bg-red-50 text-red-700 border border-red-100'
-                    }`}>
-                      <span className={`w-1 h-1 rounded-full mr-1.5 ${
-                        invoice.status === 'Hoàn thành' ? 'bg-[#10B981]' : invoice.status === 'Đang xử lý' ? 'bg-[#3B82F6]' : 'bg-red-500'
-                      }`}></span>
-                      {invoice.status}
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-emerald-50 text-emerald-700 border border-emerald-100">
+                      <span className="w-1 h-1 rounded-full mr-1.5 bg-[#10B981]"></span>
+                      Hoàn thành
                     </span>
                   </td>
                 </tr>

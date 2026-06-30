@@ -30,6 +30,44 @@ export const searchCustomers = async (req: Request, res: Response): Promise<void
   }
 };
 
+export const updateCustomer = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const { fullName, phone, email, address } = req.body as {
+      fullName?: string;
+      phone?: string;
+      email?: string;
+      address?: string;
+    };
+
+    const customer = await Customer.findByPk(id);
+    if (!customer) {
+      res.status(404).json({ message: 'Không tìm thấy khách hàng' });
+      return;
+    }
+
+    if (phone) {
+      const existing = await Customer.findOne({ where: { phone, id: { [Op.ne]: id } } });
+      if (existing) {
+        res.status(409).json({ message: 'Số điện thoại đã tồn tại' });
+        return;
+      }
+    }
+
+    await customer.update({
+      fullName: fullName ?? customer.fullName,
+      phone: phone ?? customer.phone,
+      email: email ?? customer.email,
+      address: address ?? customer.address,
+    });
+
+    res.status(200).json(customer);
+    return;
+  } catch {
+    res.status(500).json({ message: 'Lỗi máy chủ nội bộ' });
+  }
+};
+
 export const createCustomer = async (req: Request, res: Response): Promise<void> => {
   try {
     const { fullName, phone, email, address } = req.body as {
