@@ -19,7 +19,7 @@ import {
   Check,
   ShoppingBag
 } from 'lucide-react';
-import { searchCustomers, createCustomer } from '../services/customer.service';
+import { searchCustomers, createCustomer, updateCustomer } from '../services/customer.service';
 
 interface CustomerManagementProps {
   customers: Customer[];
@@ -90,8 +90,6 @@ export default function CustomerManagement({
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
-  const [editTier, setEditTier] = useState<'Đồng' | 'Bạc' | 'Vàng' | 'Kim cương'>('Đồng');
-  const [editPoints, setEditPoints] = useState(0);
 
   // Toast / Notification banner
   const [notification, setNotification] = useState<string | null>(null);
@@ -174,11 +172,9 @@ export default function CustomerManagement({
     setEditName(c.name);
     setEditPhone(c.phone);
     setEditEmail(c.email || '');
-    setEditTier(c.tier);
-    setEditPoints(c.loyaltyPoints);
   };
 
-  const handleSaveEditCustomerSubmit = (e: FormEvent) => {
+  const handleSaveEditCustomerSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!editingCustomer) return;
 
@@ -187,24 +183,19 @@ export default function CustomerManagement({
       return;
     }
 
-    // update state locally
-    const updatedList = localCustomers.map(c => {
-      if (c.id === editingCustomer.id) {
-        return {
-          ...c,
-          name: editName.trim(),
-          phone: editPhone.trim(),
-          email: editEmail.trim() || undefined,
-          tier: editTier,
-          loyaltyPoints: editPoints
-        };
-      }
-      return c;
-    });
+    try {
+      await updateCustomer(editingCustomer.id, {
+        fullName: editName.trim(),
+        phone: editPhone.trim(),
+        email: editEmail.trim() || undefined,
+      });
 
-    setLocalCustomers(updatedList);
-    setEditingCustomer(null);
-    showToast(`Đã lưu cập nhật thông tin khách hàng ${editName} thành công!`);
+      await loadCustomers();
+      setEditingCustomer(null);
+      showToast(`Đã lưu cập nhật thông tin khách hàng ${editName.trim()} thành công!`);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Cập nhật khách hàng thất bại');
+    }
   };
 
   // Find customer actual invoices
@@ -410,11 +401,11 @@ export default function CustomerManagement({
                           <span>Xem lịch sử</span>
                         </button>
 
-                        {/* Edit Customer Trigger Button — disabled: backend has no PUT /api/customers/:id yet */}
+                        {/* Edit Customer Button */}
                         <button
-                          disabled
-                          className="px-2 py-1 text-[10px] font-extrabold border border-gray-200 rounded bg-white text-gray-300 cursor-not-allowed flex items-center space-x-0.5"
-                          title="Chức năng sửa khách hàng chưa được hỗ trợ — backend chưa có endpoint cập nhật"
+                          onClick={() => handleOpenEditCustomerModal(c)}
+                          className="px-2 py-1 text-[10px] font-extrabold border border-gray-200 hover:border-gray-300 hover:bg-gray-50 rounded text-gray-600 transition flex items-center space-x-0.5"
+                          title="Sửa thông tin khách hàng"
                         >
                           <Edit2 className="w-3 h-3" />
                           <span>Sửa</span>
@@ -620,34 +611,6 @@ export default function CustomerManagement({
                   className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950"
                   placeholder="Chưa cập nhật email"
                 />
-              </div>
-
-              {/* Tier & loyaltyPoints */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Phân bậc xếp hạng</label>
-                  <select
-                    value={editTier}
-                    onChange={(e) => setEditTier(e.target.value as any)}
-                    className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-bold"
-                  >
-                    <option value="Đồng">Đồng</option>
-                    <option value="Bạc">Bạc</option>
-                    <option value="Vàng">Vàng</option>
-                    <option value="Kim cương">Kim cương</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase">Điểm số tích lũy</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editPoints}
-                    onChange={(e) => setEditPoints(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-mono font-bold"
-                  />
-                </div>
               </div>
 
               <div className="flex justify-end space-x-2 pt-3 border-t border-gray-100">

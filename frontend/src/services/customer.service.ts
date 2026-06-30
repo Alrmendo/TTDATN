@@ -22,3 +22,10 @@ export const createCustomer = async (data: unknown) => {
 
   return res.data;
 };
+
+export const updateCustomer = async (id: string, data: unknown) => {
+  const res = await axios.put(`${API_URL}/${id}`, data, {
+    headers: authHeader(),
+  });
+  return res.data;
+};
