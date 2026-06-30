@@ -3,6 +3,7 @@ import { TrendingUp, ShoppingBag, AlertTriangle, Store, ArrowUpRight, ArrowDownR
 import { Invoice, Product } from '../types';
 import { fetchLowStock, ApiLowStockItem } from '../services/inventoryApi';
 import { fetchRevenueReport, toDateParam } from '../services/reportApi';
+import { getStores } from '../services/store.service';
 
 interface DashboardOverviewProps {
   invoices: Invoice[];
@@ -16,11 +17,12 @@ interface DailyPoint {
   amount: number;
 }
 
-export default function DashboardOverview({ invoices, products: _products, storesCount, onNavigate }: DashboardOverviewProps) {
+export default function DashboardOverview({ invoices, products: _products, storesCount: _storesCount, onNavigate }: DashboardOverviewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
 
   const [lowStockItems, setLowStockItems] = useState<ApiLowStockItem[]>([]);
+  const [storesCount, setStoresCount] = useState(0);
   const [last7DaysRevenue, setLast7DaysRevenue] = useState<DailyPoint[]>([]);
   const [todayRevenue, setTodayRevenue] = useState(0);
   const [todayOrders, setTodayOrders] = useState(0);
@@ -45,8 +47,9 @@ export default function DashboardOverview({ invoices, products: _products, store
         const weekStartStr = toDateParam(weekStart);
         const monthStartStr = toDateParam(monthStart);
 
-        const [lowStock, todayReport, yesterdayReport, weekReport, monthReport] = await Promise.all([
+        const [lowStock, storesRes, todayReport, yesterdayReport, weekReport, monthReport] = await Promise.all([
           fetchLowStock(),
+          getStores(),
           fetchRevenueReport(todayStr, todayStr),
           fetchRevenueReport(yesterdayStr, yesterdayStr),
           fetchRevenueReport(weekStartStr, todayStr),
@@ -54,6 +57,7 @@ export default function DashboardOverview({ invoices, products: _products, store
         ]);
 
         setLowStockItems(lowStock);
+        setStoresCount(storesRes.data.length);
         setTodayRevenue(todayReport.totalRevenue);
         setTodayOrders(todayReport.totalOrders);
         setYesterdayRevenue(yesterdayReport.totalRevenue);
