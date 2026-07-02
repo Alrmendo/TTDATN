@@ -5,10 +5,10 @@ import { getRevenueReport, getInventoryReport } from '../controllers/report.cont
 
 const router = Router();
 
-// GET /api/report/revenue?startDate=&endDate=&storeId=
+// GET /api/reports/revenue?startDate=&endDate=&storeId=
 router.get('/revenue', authMiddleware, roleMiddleware(['Manager']), getRevenueReport);
 
-// GET /api/report/inventory?storeId=
+// GET /api/reports/inventory?storeId=
 router.get('/inventory', authMiddleware, roleMiddleware(['Manager']), getInventoryReport);
 
 export default router;

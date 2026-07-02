@@ -33,11 +33,8 @@ import { Product, Category, AuthUser, Customer, Invoice, Promotion, Store, Purch
 import { roleLabels, defaultTabByRole } from './utils/roleMapping';
 import { 
   initialProducts,
-  initialCustomers,
   initialInvoices, 
-  initialPromotions, 
   initialStores, 
-  initialPurchaseOrders 
 } from './data';
 
 // Component imports
@@ -69,11 +66,11 @@ export default function App() {
   // App States for mock databases
   const [userRole, setUserRole] = useState<'Quản lý' | 'Nhân viên bán hàng' | 'Nhân viên kho' | ''>('');
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [products, setProducts] = useState<Product[]>(initialProducts);
-const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
-  const [promotions, setPromotions] = useState<Promotion[]>(initialPromotions);
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(initialPurchaseOrders);
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
 
   const [categories, setCategories] = useState<Category[]>([]);
 
@@ -159,23 +156,27 @@ const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   };
 
   const loadProducts = async () => {
-    const data = await getProducts();
+    try{
+      const data = await getProducts();
 
-    setProducts(
-      data.map((p: any) => ({
-        productId: p.id,
-        sku: p.sku,
-        productName: p.productName,
-        categoryId: p.categoryId,
-        category: p.category?.categoryName ?? '',
-        price: Number(p.price),
-        cost: Number(p.costPrice ?? 0),
-        stock: 0,
-        status: p.isActive
-          ? 'Đang kinh doanh'
-          : 'Ngừng kinh doanh',
-      }))
-    );
+      setProducts(
+        data.map((p: any) => ({
+          productId: p.id,
+          sku: p.sku,
+          productName: p.productName,
+          categoryId: p.categoryId,
+          category: p.category?.categoryName ?? '',
+          price: Number(p.price),
+          cost: Number(p.costPrice ?? 0),
+          stock: 0,
+          status: p.isActive
+            ? 'Đang kinh doanh'
+            : 'Ngừng kinh doanh',
+        }))
+      );
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const loadCategories = async () => {
@@ -185,9 +186,10 @@ const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   };
 
   useEffect(() => {
+    if (!currentUser) return;
     loadProducts();
     loadCategories();
-  }, []);
+  }, [currentUser]);
 
   const handleSearchProducts = async (keyword: string) => {
     if (!keyword.trim()) {
