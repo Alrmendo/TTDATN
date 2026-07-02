@@ -34,7 +34,7 @@ export function toDateParam(d: Date): string {
 }
 
 /**
- * GET /api/report/revenue?startDate=&endDate=&storeId=
+ * GET /api/reports/revenue?startDate=&endDate=&storeId=
  * Chỉ Manager mới gọi được endpoint này.
  */
 export async function fetchRevenueReport(
@@ -44,16 +44,16 @@ export async function fetchRevenueReport(
 ): Promise<ApiRevenueReport> {
   const params = new URLSearchParams({ startDate, endDate });
   if (storeId) params.set('storeId', storeId);
-  const res = await fetch(`${API_BASE}/report/revenue?${params.toString()}`, { headers: authHeaders() });
+  const res = await fetch(`${API_BASE}/reports/revenue?${params.toString()}`, { headers: authHeaders() });
   return parseOrThrow(res);
 }
 
 /**
- * GET /api/report/inventory?storeId=
+ * GET /api/reports/inventory?storeId=
  * Chỉ Manager mới gọi được endpoint này.
  */
 export async function fetchInventoryReport(storeId?: string): Promise<ApiInventoryReport> {
   const qs = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
-  const res = await fetch(`${API_BASE}/report/inventory${qs}`, { headers: authHeaders() });
+  const res = await fetch(`${API_BASE}/reports/inventory${qs}`, { headers: authHeaders() });
   return parseOrThrow(res);
 }
