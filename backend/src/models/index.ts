@@ -43,7 +43,7 @@ PurchaseOrderDetail.belongsTo(Product, { foreignKey: 'productId', as: 'product' 
 Product.hasMany(PurchaseOrderDetail, { foreignKey: 'productId' });
 
 // --- Invoices ---
-Invoice.belongsTo(Store, { foreignKey: 'storeId' });
+Invoice.belongsTo(Store, { foreignKey: 'storeId', as: 'store' });
 Store.hasMany(Invoice, { foreignKey: 'storeId' });
 Invoice.belongsTo(User, { foreignKey: 'staffId', as: 'staff' });
 Invoice.belongsTo(Customer, { foreignKey: 'customerId', as: 'customer' });
