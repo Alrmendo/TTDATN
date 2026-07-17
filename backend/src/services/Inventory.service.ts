@@ -1,9 +1,11 @@
 import { Op, Sequelize } from 'sequelize';
 import { Inventory, Product, Store, Category } from '../models';
 
-// Product.belongsTo(Category) and Inventory.belongsTo(Product/Store) are defined
-// with no `as:` alias in models/index.ts, so Sequelize's default include accessor
-// is the model name as exported (PascalCase: `Product`, `Store`, `Category`).
+// Inventory.belongsTo(Product/Store) are defined with no `as:` alias in
+// models/index.ts, so Sequelize's default include accessor is the model name
+// as exported (PascalCase: `Product`, `Store`). Product.belongsTo(Category),
+// however, IS defined with `as: 'category'` — any nested include of Category
+// through Product must specify `as: 'category'` or Sequelize throws.
 
 export type AdjustMode = 'increase' | 'decrease';
 
@@ -30,7 +32,7 @@ const toStockDTO = (rec: any) => {
     productId: rec.productId,
     productName: product?.productName ?? null,
     sku: product?.sku ?? null,
-    categoryName: category?.name ?? null,
+    categoryName: category?.categoryName ?? null,
     price: product?.price ?? null,
     costPrice: product?.costPrice ?? null,
     isActive: product?.isActive ?? null,
@@ -124,7 +126,7 @@ const InventoryService = {
         {
           model: Product,
           attributes: ['id', 'productName', 'sku', 'price', 'costPrice', 'isActive'],
-          include: [{ model: Category, attributes: ['id', 'name'] }],
+          include: [{ model: Category, as: 'category', attributes: ['id', 'categoryName'] }],
         },
       ],
       order: [['lastUpdated', 'DESC']],
