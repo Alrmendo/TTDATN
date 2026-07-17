@@ -1,6 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { Product, Category } from '../types';
-import { Search, Plus, Filter, AlertTriangle, Trash2, Edit, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, Filter, Trash2, Edit, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface ProductManagementProps {
   products: Product[];
@@ -387,21 +387,6 @@ export default function ProductManagement({ products, categories, onAddProduct, 
         </div>
       )}
 
-      {/* Critical warning state block */}
-      {products.filter(p => p.stock <= 4).length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {products.filter(p => p.stock <= 4).slice(0, 3).map(p => (
-            <div key={p.productId} className="flex items-center space-x-3 p-3 bg-red-50 border border-red-100 rounded-xl">
-              <AlertTriangle className="w-4.5 h-4.5 text-red-500 animate-pulse shrink-0" />
-              <div className="text-xs">
-                <p className="font-bold text-red-950 truncate max-w-[200px]" title={p.productName}>{p.productName}</p>
-                <p className="text-[10px] text-red-600">Tồn kho còn <span className="font-bold">{p.stock}</span>! Cần lập đơn nhập hàng bổ sung gấp.</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Core Product Table */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto text-[13px]">
@@ -418,18 +403,12 @@ export default function ProductManagement({ products, categories, onAddProduct, 
             </thead>
             <tbody className="divide-y divide-gray-100 font-medium">
               {currentProducts.map((p) => {
-                const isUnderStock = p.stock <= 5;
                 return (
                   <tr key={p.productId} className="hover:bg-gray-50/70 transition" id={`row-sp-${p.productId}`}>
                     <td className="px-5 py-3.5 text-[#3B82F6] font-bold font-mono text-[11px]">{p.sku}</td>
                     <td className="px-5 py-3.5 text-gray-950 font-bold">
                       <div className="flex flex-col">
                         <span>{p.productName}</span>
-                        {isUnderStock && (
-                          <span className="text-[9px] text-amber-600 font-medium flex items-center mt-0.5">
-                            ⚠️ tồn kho tối thiểu ({p.stock} sản phẩm)
-                          </span>
-                        )}
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-gray-500">
