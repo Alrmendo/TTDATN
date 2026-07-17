@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TTDATN is a retail chain management system (Vietnamese: Tổ chức Bán lẻ Chuỗi) with a Node.js/Express/TypeScript backend and a React/Vite/TypeScript frontend. The frontend components are being migrated from mock data to real API calls one by one. Auth, Account management, Inventory, Customer management, the Sales/POS flow (orders, customers, promotions, loyalty points), Product/Category/Promotion management (full CRUD for products and categories; create+update+deactivate for promotions), Stock Transfer between branches, Store management, Revenue/Inventory reports (RevenueReport.tsx), and Warehouse management (tab Tồn kho + Đơn nhập hàng) are implemented end-to-end (backend + frontend). DashboardOverview storesCount và bảng "Đơn hàng gần đây" đã wire API thật; phần doanh thu/chart vẫn lỗi do `reportApi.ts` gọi sai path `/api/report/revenue` (thiếu chữ **s** — việc của Quý, chưa fix). EmployeeManagement and ReportView have been removed from the codebase.
+TTDATN is a retail chain management system (Vietnamese: Tổ chức Bán lẻ Chuỗi) with a Node.js/Express/TypeScript backend and a React/Vite/TypeScript frontend. **Tuần 5 (17/7/2026) — buffer sửa lỗi + bắt đầu viết báo cáo.** Tất cả frontend components đã được wire vào real API: Auth, Account management, Inventory, Customer management, Sales/POS flow, Product/Category/Promotion management, Stock Transfer, Store management, Revenue/Inventory reports (RevenueReport.tsx), Warehouse management (Tồn kho + Đơn nhập hàng), và DashboardOverview (storesCount, bảng "Đơn hàng gần đây", revenue chart today/yesterday/week/month — tất cả đã wire API thật, path `reportApi.ts` đã đúng `/api/reports/revenue`). EmployeeManagement and ReportView have been removed from the codebase.
 
 ## Commands
 
@@ -80,7 +80,7 @@ Layered architecture:
 - `product.controller.ts` — `searchProducts` (active products only, ILIKE on name/sku, includes `category`), `getProducts` (all products incl. inactive, for management UI), `createProduct`, `updateProduct`, `deleteProduct` (soft delete via `isActive=false`, **not** a hard delete despite the name) — full CRUD now implemented; Manager-only on create/update/delete via `roleMiddleware`
 - `category.controller.ts` — `getCategories`, `createCategory`, `updateCategory`, `deleteCategory` (hard delete via `destroy()`, **not** soft delete — categories have no `isActive` column); Manager-only on create/update/delete via `roleMiddleware`
 - `promotion.controller.ts` — `getPromotions`, `createPromotion`, `updatePromotion` (edit name/value/dates of existing promotion), `deactivatePromotion` (soft-disable via `isActive=false`, matches Schema.md "không cho xóa cứng"); Manager-only on create/update/deactivate via `roleMiddleware`
-- `customer.controller.ts` — `searchCustomers` (ILIKE on fullName/phone, includes `loyaltyPoints`), `createCustomer` (409 on duplicate phone, also creates a `loyalty_points` row), `updateCustomer` (404 nếu không tìm thấy, 409 nếu phone mới trùng customer khác qua pre-check `Op.ne`)
+- `customer.controller.ts` — `searchCustomers` (ILIKE on fullName/phone via `unaccent()`, includes `loyaltyPoints`), `createCustomer` (accepts `fullName`, `phone`, `email`, `address`; 409 on duplicate phone, also creates a `loyalty_points` row), `updateCustomer` (accepts same 4 fields; 404 nếu không tìm thấy, 409 nếu phone mới trùng customer khác qua pre-check `Op.ne`) — **note:** `address` được backend nhận nhưng UI chưa expose (form chỉ có fullName/phone/email)
 - `loyaltyPoint.controller.ts` — `getBalance` (đọc `customerId` từ query, 400 nếu thiếu), `redeemPoints` (đọc `customerId`/`amount` từ body, 400 nếu thiếu/invalid, **422** nếu `LoyaltyPointService.redeemPoints` trả `false` do không đủ điểm); chỉ `authMiddleware`, không `roleMiddleware` — Staff dùng trực tiếp khi bán hàng
 - `order.controller.ts` — `createOrder`, `addItem` (422 on `'Tồn kho không đủ'`), `removeItem`, `applyPromotion`, `confirmPayment` (422 on `'Số tiền không đủ'`), `getInvoices` (role-scoped: Staff forced to own store, Manager optional `storeId`; supports `startDate`/`endDate`/`search`; includes `invoiceDetails`/`customer`/`staff`/`promotion`/`store` — `store` được thêm tuần 3 để trả `storeName` cho DashboardOverview)
 - `purchase-order.controller.ts` — `createPurchaseOrder` (Manager), `getPurchaseOrders` (Manager + WarehouseStaff, store-scoped cho WarehouseStaff), `getPurchaseOrderById`, `confirmReceipt` (WarehouseStaff, gọi `InventoryService.updateInventory(storeId, productId, receivedQuantity, 'increase')` — đã verify đúng signature, đúng dùng `receivedQuantity` thực nhận không phải `quantity` đặt ban đầu), `cancelPurchaseOrder` (Manager, chỉ huỷ được khi `status='pending'`)
@@ -90,8 +90,6 @@ Layered architecture:
 > **Note:** unlike `OrderService`/`InventoryService`, there is no separate `ProductService`/`CategoryService`/`PromotionService` on the backend — `product.controller.ts`/`category.controller.ts`/`promotion.controller.ts` call the Sequelize models directly. This is inconsistent with the layered-service pattern documented above; flagged for future cleanup, not blocking.
 
 > **Ghi nhận cách làm tốt:** `purchase-order.controller.ts` dùng `catch (err) { if (err instanceof PurchaseOrderServiceError) {...} }` — custom error class mang `statusCode` riêng, cho phép trả đúng status code (400/404/409) thay vì luôn 500 chung. Khác với pattern `catch {}` không bind đã ghi ở mục "TypeScript notes", nhưng đây là **cải tiến có chủ đích**, không phải lệch convention cần sửa. Nên cân nhắc áp dụng lại cho `customer.controller.ts`/`order.controller.ts` sau này.
-
-> **Note:** unlike `OrderService`/`InventoryService`, there is no separate `ProductService`/`CategoryService`/`PromotionService` on the backend — `product.controller.ts`/`category.controller.ts`/`promotion.controller.ts` call the Sequelize models directly. This is inconsistent with the layered-service pattern documented above; flagged for future cleanup, not blocking.
 
 **Middleware implemented (`middleware/`):**
 - `auth.middleware.ts` — verifies Bearer JWT, attaches `req.user`
@@ -135,7 +133,7 @@ Layered architecture:
 11. **`/api/loyalty-points` từng bị rớt mount khi merge** — conflict trên `backend/src/server.ts` giữa branch `Bán-hàng` (thêm mount loyalty-points) và `main` (đã có category/promotion/purchase-order/supplier/stock-transfer) khiến dòng mount loyalty-points bị mất trong merge commit, dù file `loyaltyPoint.controller.ts`/`loyaltyPointRoutes.ts` vẫn tồn tại. Đã phát hiện và fix lại. **Bài học:** khi resolve conflict trên `server.ts`, phải so cả 2 phía đầy đủ — không chỉ lấy 1 bên — vì mỗi nhánh thường chỉ thêm 1-2 dòng mount riêng.
 
 **Known issues — tuần 3:**
-1. **`DashboardOverview` gọi sai path** — `reportApi.ts` gọi `GET /api/report/revenue` (thiếu chữ **s**); phải sửa thành `/api/reports/revenue` để khớp với route backend. Hiện tại toàn bộ doanh thu/chart trên Dashboard trả lỗi 404.
+1. ~~**`DashboardOverview` gọi sai path**~~ — **đã xong (SP-KM)**: `reportApi.ts` đã dùng `/api/reports/revenue` (có chữ **s**); `DashboardOverview` đã gọi `fetchRevenueReport` cho today/yesterday/week/month, chart SVG hoạt động bình thường.
 2. ~~**`DashboardOverview.storesCount` vẫn là mock**~~ — **đã xong**: wire qua `getStores()` trong `services/store.service.ts`, gộp vào `Promise.all` hiện có trong `loadDashboardData`.
 3. ~~**`DashboardOverview` bảng "Đơn hàng gần đây" vẫn là mock**~~ — **đã xong**: wire qua `fetch('/api/invoices')` gộp vào cùng `Promise.all` (backend không có `limit`/`status` query param nên lọc `status === 'completed'` + `.slice(0, 5)` phía client); `getInvoices` trong `order.controller.ts` đã bổ sung `include Store` (as `'store'`, attributes `['storeName']`) để trả `storeName` cho Dashboard — trước đó chỉ include `invoiceDetails`/`customer`/`staff`/`promotion`.
 4. ~~**`PUT /api/customers/:id` chưa có**~~ — **đã xong**: thêm `updateCustomer` controller (404 nếu không tìm thấy, 409 nếu phone mới trùng customer khác qua pre-check `Op.ne`) + route `PUT /api/customers/:id` với `roleMiddleware(['Staff','Manager'])` khớp đúng quyền với `GET`/`POST`.
@@ -145,7 +143,7 @@ All application state lives in `App.tsx` via React hooks — no Redux or Context
 - `App.tsx` — Root component; owns all state, routing logic, login/role gating; session persisted in `localStorage`
 - `types.ts` — All shared TypeScript interfaces; includes `ApiAccount`, `ApiStore`, `AuthUser`, `ApiCustomer`, `ApiPromotion`, `ApiInvoice`, `ApiInvoiceDetail`, `ApiProduct` (the original mock-shaped `Product`/`Customer`/`Promotion`/`Invoice` interfaces still exist too — kept only so unmigrated components and unused prop signatures still compile, do not use them for new API-backed work)
 - `utils/roleMapping.ts` — `roleLabels` (enum → Vietnamese), `roleLabelToEnum` (Vietnamese → enum), `defaultTabByRole`
-- `data.ts` — Mock data still used by components not yet migrated
+- `data.ts` — Mock data; `initialProducts` đã đổi thành `[]` sau khi audit (commit 2612017, SP-KM). `initialInvoices`/`initialStores` còn mock data nhưng không còn component active nào đọc.
 - `components/` — One file per business domain
 
 **Frontend API service layer (`services/`)** — convention mới, áp dụng cho code Sản phẩm/Danh mục/Khuyến mãi trở đi:
@@ -166,9 +164,10 @@ All application state lives in `App.tsx` via React hooks — no Redux or Context
 - `WarehouseManagement.tsx` — tab **Tồn kho** dùng `inventoryApi.fetchStockByStore` → `GET /api/inventory`; tab **Đơn nhập hàng** dùng `GET /api/purchase-orders`, `POST /api/purchase-orders`, `PUT /api/purchase-orders/:id/confirm`, `PUT /api/purchase-orders/:id/cancel` — tất cả qua real API. Tab "Điều chuyển hàng" (mock cũ ~400 dòng) đã bị xóa khỏi component này sau khi `StockTransferManagement.tsx` ra đời.
 - `StoreManagement.tsx` — full CRUD qua `services/store.service.ts` → `GET/POST/PUT /api/stores`, `PATCH /api/stores/:id/deactivate`.
 - `RevenueReport.tsx` — dùng hai hooks `useRevenueReport`/`useInventoryReport` gọi `reportApi.fetchRevenueReport`/`fetchInventoryReport`; props mock cũ đã bỏ.
+- `DashboardOverview.tsx` — đã wire API thật hoàn toàn: `fetchLowStock()` → low-stock list; `getStores()` → storesCount; `fetchRevenueReport()` (gọi 4 lần: today/yesterday/week/month) → revenue cards + SVG line chart; `fetch('http://localhost:5000/api/invoices')` → bảng "Đơn hàng gần đây" (filter `status==='completed'` + `.slice(0,5)` client-side). **Note:** lời gọi `/api/invoices` dùng hardcoded `http://localhost:5000` thay vì `API_BASE` constant — inconsistency nhỏ so với `reportApi.ts`.
 
 **Components still using mock data (not yet migrated):**
-- `DashboardOverview` — phần doanh thu/chart gọi `GET /api/report/revenue` nhưng path sai (thiếu chữ **s** — phải là `/api/reports/revenue`) — xem "Known issues — tuần 3" #1. (`storesCount` và bảng "Đơn hàng gần đây" đã wire API thật — tuần 3.)
+- (Không còn — tất cả component đã wire API thật.)
 
 ### Login credentials
 Real (seeded in DB — use these when backend is running):
@@ -246,8 +245,9 @@ git push origin Auth   # only when user says to push
 - ~~Missing model `stock_transfers`~~ — đã xong model/service/controller/route/frontend
 - ~~`PUT /api/customers/:id`~~ — đã xong: `updateCustomer` controller + route `PUT /api/customers/:id` với `roleMiddleware(['Staff','Manager'])`
 
-**Frontend — còn cần làm:**
-- `DashboardOverview`: fix path `/api/report/revenue` → `/api/reports/revenue` trong `reportApi.ts` (Known issues — tuần 3 #1 — việc của Quý, chưa fix)
+**Frontend — còn cần làm (minor):**
+- `DashboardOverview`: đổi hardcoded `http://localhost:5000/api/invoices` sang dùng `API_BASE` constant như `reportApi.ts` (không ảnh hưởng chức năng, chỉ là inconsistency).
+- `CustomerManagement.tsx`: form tạo/sửa chưa expose field `address` dù backend đã nhận (minor UX gap).
 
 **Frontend — đã xong (không còn pending):**
 - ~~`WarehouseManagement`~~ — đã wire tab Tồn kho + Đơn nhập hàng vào real API
@@ -255,4 +255,5 @@ git push origin Auth   # only when user says to push
 - ~~`RevenueReport`~~ — đã wire qua `reportApi.ts` hooks
 - ~~`PromotionManagement` nút Sửa~~ — đã kích hoạt sau khi có `updatePromotion`
 - ~~`DashboardOverview` storesCount + bảng "Đơn hàng gần đây"~~ — đã wire API thật: `getStores()` + `fetch('/api/invoices')` gộp vào `Promise.all`
+- ~~`DashboardOverview` revenue chart + cards~~ — **đã xong (SP-KM)**: `fetchRevenueReport` wire 4 lần (today/yesterday/week/month), path `/api/reports/revenue` đã đúng
 - ~~`CustomerManagement.tsx` nút Sửa~~ — đã kích hoạt sau khi có `PUT /api/customers/:id`
