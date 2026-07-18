@@ -92,7 +92,7 @@ export interface ApiAccount {
   fullName: string;
   email: string;
   phone: string | null;
-  role: 'Manager' | 'Staff' | 'WarehouseStaff';
+  role: 'Manager' | 'Staff' | 'WarehouseStaff' | 'BranchManager';
   storeId: string | null;
   salary: number | null;
   isActive: boolean;
@@ -111,7 +111,7 @@ export interface AuthUser {
   id: string;
   fullName: string;
   email: string;
-  role: 'Manager' | 'Staff' | 'WarehouseStaff';
+  role: 'Manager' | 'Staff' | 'WarehouseStaff' | 'BranchManager';
   storeId: string | null;
 }
 
