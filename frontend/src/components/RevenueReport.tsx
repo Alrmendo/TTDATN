@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ApiStore } from '../types';
 import { useRevenueReport } from '../hooks/useRevenueReport';
+import { usePeriodRevenueReport } from '../hooks/usePeriodRevenueReport';
 import { useInventoryReport } from '../hooks/useInventoryReport';
 import {
   FileText,
@@ -28,9 +29,18 @@ export default function RevenueReport() {
   const [appliedReportType, setAppliedReportType] = useState<'Doanh thu' | 'Tồn kho'>('Doanh thu');
   const [dateRangeError, setDateRangeError] = useState<string | null>(null);
   const [hoveredBarIndex, setHoveredBarIndex] = useState<number | null>(null);
+  const [hoveredPeriodBarIndex, setHoveredPeriodBarIndex] = useState<number | null>(null);
   const [stores, setStores] = useState<ApiStore[]>([]);
 
+  type PeriodMode = 'range' | 'month' | 'quarter' | 'year';
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('range');
+  const [appliedPeriodMode, setAppliedPeriodMode] = useState<PeriodMode>('range');
+  const [periodMonth, setPeriodMonth] = useState(today.getMonth() + 1);
+  const [periodQuarter, setPeriodQuarter] = useState(Math.floor(today.getMonth() / 3) + 1);
+  const [periodYear, setPeriodYear] = useState(today.getFullYear());
+
   const revenue = useRevenueReport();
+  const period = usePeriodRevenueReport();
   const inventory = useInventoryReport();
 
   useEffect(() => {
@@ -44,13 +54,29 @@ export default function RevenueReport() {
   }, []);
 
   const handleQueryReport = () => {
-    if (startDate > endDate) {
+    const storeId = selectedStoreId || undefined;
+
+    if (reportType === 'Doanh thu' && periodMode !== 'range') {
+      setDateRangeError(null);
+      setAppliedReportType(reportType);
+      setAppliedPeriodMode(periodMode);
+      if (periodMode === 'month') {
+        period.loadMonth(periodMonth, periodYear, storeId);
+      } else if (periodMode === 'quarter') {
+        period.loadQuarter(periodQuarter, periodYear, storeId);
+      } else {
+        period.loadYear(periodYear, storeId);
+      }
+      return;
+    }
+
+    if (reportType === 'Doanh thu' && startDate > endDate) {
       setDateRangeError('Khoảng thời gian không hợp lệ');
       return;
     }
     setDateRangeError(null);
     setAppliedReportType(reportType);
-    const storeId = selectedStoreId || undefined;
+    setAppliedPeriodMode('range');
     if (reportType === 'Doanh thu') {
       revenue.load(startDate, endDate, storeId);
     } else {
@@ -66,8 +92,11 @@ export default function RevenueReport() {
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
 
   const rd = revenue.data;
+  const pd = period.data;
   const inv = inventory.data;
-  const isLoading = revenue.loading || inventory.loading;
+  const isLoading = revenue.loading || period.loading || inventory.loading;
+
+  const monthNames = ['Th.1', 'Th.2', 'Th.3', 'Th.4', 'Th.5', 'Th.6', 'Th.7', 'Th.8', 'Th.9', 'Th.10', 'Th.11', 'Th.12'];
 
   return (
     <div className="space-y-6">
@@ -104,29 +133,117 @@ export default function RevenueReport() {
           </select>
         </div>
 
-        <div className="md:col-span-4 text-xs space-y-1">
-          <label className="block text-gray-500 font-bold uppercase text-[10px]">Khoảng thời gian (Từ ngày — Đến ngày)</label>
-          <div className="flex items-center space-x-2">
+        {reportType === 'Doanh thu' && (
+          <div className="md:col-span-12 flex items-center space-x-1 text-xs bg-gray-50 border border-gray-100 rounded-lg p-1 w-fit" id="report-period-mode-tabs">
+            {([
+              ['range', 'Khoảng ngày'],
+              ['month', 'Theo tháng'],
+              ['quarter', 'Theo quý'],
+              ['year', 'Theo năm'],
+            ] as [PeriodMode, string][]).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                id={`report-period-tab-${mode}`}
+                onClick={() => setPeriodMode(mode)}
+                className={`px-3 py-1.5 rounded-md font-semibold transition ${
+                  periodMode === mode ? 'bg-white text-[#3B82F6] shadow-xs' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {(reportType === 'Tồn kho' || periodMode === 'range') && (
+          <div className="md:col-span-4 text-xs space-y-1">
+            <label className="block text-gray-500 font-bold uppercase text-[10px]">Khoảng thời gian (Từ ngày — Đến ngày)</label>
+            <div className="flex items-center space-x-2">
+              <input
+                type="date"
+                id="report-start-date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono"
+              />
+              <span className="text-gray-400">đến</span>
+              <input
+                type="date"
+                id="report-end-date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono"
+              />
+            </div>
+            {dateRangeError && (
+              <p className="text-[10px] text-red-600 font-bold mt-1">{dateRangeError}</p>
+            )}
+          </div>
+        )}
+
+        {reportType === 'Doanh thu' && periodMode === 'month' && (
+          <div className="md:col-span-4 text-xs space-y-1">
+            <label className="block text-gray-500 font-bold uppercase text-[10px]">Tháng — Năm</label>
+            <div className="flex items-center space-x-2">
+              <select
+                id="report-period-month"
+                value={periodMonth}
+                onChange={(e) => setPeriodMonth(Number(e.target.value))}
+                className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold bg-white text-gray-900 focus:outline-none"
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                  <option key={m} value={m}>Tháng {m}</option>
+                ))}
+              </select>
+              <input
+                type="number"
+                id="report-period-year-month"
+                value={periodYear}
+                onChange={(e) => setPeriodYear(Number(e.target.value))}
+                className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold focus:outline-none font-mono"
+              />
+            </div>
+          </div>
+        )}
+
+        {reportType === 'Doanh thu' && periodMode === 'quarter' && (
+          <div className="md:col-span-4 text-xs space-y-1">
+            <label className="block text-gray-500 font-bold uppercase text-[10px]">Quý — Năm</label>
+            <div className="flex items-center space-x-2">
+              <select
+                id="report-period-quarter"
+                value={periodQuarter}
+                onChange={(e) => setPeriodQuarter(Number(e.target.value))}
+                className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold bg-white text-gray-900 focus:outline-none"
+              >
+                {[1, 2, 3, 4].map(q => (
+                  <option key={q} value={q}>Quý {q}</option>
+                ))}
+              </select>
+              <input
+                type="number"
+                id="report-period-year-quarter"
+                value={periodYear}
+                onChange={(e) => setPeriodYear(Number(e.target.value))}
+                className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold focus:outline-none font-mono"
+              />
+            </div>
+          </div>
+        )}
+
+        {reportType === 'Doanh thu' && periodMode === 'year' && (
+          <div className="md:col-span-4 text-xs space-y-1">
+            <label className="block text-gray-500 font-bold uppercase text-[10px]">Năm</label>
             <input
-              type="date"
-              id="report-start-date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono"
-            />
-            <span className="text-gray-400">đến</span>
-            <input
-              type="date"
-              id="report-end-date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 font-mono"
+              type="number"
+              id="report-period-year-year"
+              value={periodYear}
+              onChange={(e) => setPeriodYear(Number(e.target.value))}
+              className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold focus:outline-none font-mono"
             />
           </div>
-          {dateRangeError && (
-            <p className="text-[10px] text-red-600 font-bold mt-1">{dateRangeError}</p>
-          )}
-        </div>
+        )}
 
         <div className="md:col-span-3 text-xs space-y-1">
           <label className="block text-gray-500 font-bold uppercase text-[10px]">Chi nhánh</label>
@@ -159,14 +276,19 @@ export default function RevenueReport() {
       </div>
 
       {/* Error */}
-      {(revenue.error || inventory.error) && (
+      {(revenue.error || period.error || inventory.error) && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-xs text-red-700 font-semibold">
-          {revenue.error || inventory.error}
+          {revenue.error || period.error || inventory.error}
         </div>
       )}
 
       {/* Empty-state placeholder before first query */}
-      {appliedReportType === 'Doanh thu' && !rd && !revenue.loading && !revenue.error && (
+      {appliedReportType === 'Doanh thu' && appliedPeriodMode === 'range' && !rd && !revenue.loading && !revenue.error && (
+        <div className="bg-white p-12 rounded-xl border border-gray-200 shadow-xs text-center text-gray-400 text-xs">
+          Nhấn "Xem báo cáo" để tải dữ liệu doanh thu
+        </div>
+      )}
+      {appliedReportType === 'Doanh thu' && appliedPeriodMode !== 'range' && !pd && !period.loading && !period.error && (
         <div className="bg-white p-12 rounded-xl border border-gray-200 shadow-xs text-center text-gray-400 text-xs">
           Nhấn "Xem báo cáo" để tải dữ liệu doanh thu
         </div>
@@ -177,8 +299,8 @@ export default function RevenueReport() {
         </div>
       )}
 
-      {/* ================= DOANH THU SECTION ================= */}
-      {appliedReportType === 'Doanh thu' && rd && (
+      {/* ================= DOANH THU SECTION (khoảng ngày) ================= */}
+      {appliedReportType === 'Doanh thu' && appliedPeriodMode === 'range' && rd && (
         <div className="space-y-6 animate-fadeIn">
 
           {/* Summary cards */}
@@ -348,6 +470,118 @@ export default function RevenueReport() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ================= DOANH THU SECTION (theo tháng) ================= */}
+      {appliedReportType === 'Doanh thu' && appliedPeriodMode === 'month' && pd && (
+        <div className="space-y-6 animate-fadeIn">
+          <div className="bg-white p-10 rounded-xl border border-gray-200 shadow-xs flex flex-col items-center justify-center text-center" id="doanh-thu-month-card">
+            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl mb-3">
+              <DollarSign className="w-6 h-6" />
+            </div>
+            <span className="text-xs text-gray-500 font-medium">Tổng doanh thu Tháng {periodMonth}/{periodYear}</span>
+            <span className="text-3xl font-black text-gray-950 font-mono mt-2">{formatVND(pd.total)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ================= DOANH THU SECTION (theo quý / năm) ================= */}
+      {appliedReportType === 'Doanh thu' && (appliedPeriodMode === 'quarter' || appliedPeriodMode === 'year') && pd && (
+        <div className="space-y-6 animate-fadeIn">
+
+          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs flex items-center space-x-4 w-fit" id="doanh-thu-period-total-card">
+            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+              <DollarSign className="w-5 h-5" />
+            </div>
+            <div className="text-xs">
+              <span className="block text-gray-500 font-medium">
+                Tổng doanh thu {appliedPeriodMode === 'quarter' ? `Quý ${periodQuarter}/${periodYear}` : `Năm ${periodYear}`}
+              </span>
+              <span className="text-base font-black text-gray-950 font-mono mt-0.5 block">{formatVND(pd.total)}</span>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs space-y-4">
+            <div className="border-b border-gray-100 pb-4">
+              <h3 className="text-xs font-bold text-gray-950 uppercase tracking-wider flex items-center">
+                <BarChart3 className="w-4 h-4 mr-2 text-[#3B82F6]" />
+                Doanh thu theo tháng — {appliedPeriodMode === 'quarter' ? `Quý ${periodQuarter}/${periodYear}` : `Năm ${periodYear}`}
+              </h3>
+              <p className="text-[11px] text-gray-400 mt-0.5">Rà chuột hoặc di chuyển qua các thanh cột để xem chi tiết doanh số mỗi tháng</p>
+            </div>
+            <div className="relative pt-4 h-64 w-full">
+              {pd.breakdown.every(b => b.total === 0) ? (
+                <div className="h-full flex items-center justify-center text-xs text-gray-400 font-medium">
+                  Không có dữ liệu phù hợp trong khoảng thời gian này
+                </div>
+              ) : (
+                <div className="w-full h-full flex flex-col justify-between">
+                  <svg viewBox="0 0 600 200" className="w-full h-48 overflow-visible" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="periodBarGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.9"/>
+                        <stop offset="100%" stopColor="#1E40AF" stopOpacity="0.3"/>
+                      </linearGradient>
+                      <linearGradient id="periodBarGradientHover" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#2563EB" stopOpacity="1"/>
+                        <stop offset="100%" stopColor="#1D4ED8" stopOpacity="0.5"/>
+                      </linearGradient>
+                    </defs>
+                    <line x1="0" y1="170" x2="600" y2="170" stroke="#CDCFCF" strokeWidth="1" />
+                    {pd.breakdown.map((point, index) => {
+                      const totalBars = pd.breakdown.length;
+                      const segmentWidth = 600 / totalBars;
+                      const barWidth = Math.min(60, segmentWidth * 0.4);
+                      const x = index * segmentWidth + (segmentWidth - barWidth) / 2;
+                      const maxVal = Math.max(...pd.breakdown.map(b => b.total), 1) * 1.1;
+                      const barHeight = Math.max(10, (point.total / maxVal) * 150);
+                      const y = 170 - barHeight;
+                      const isHovered = hoveredPeriodBarIndex === index;
+                      return (
+                        <g
+                          key={point.month}
+                          onMouseEnter={() => setHoveredPeriodBarIndex(index)}
+                          onMouseLeave={() => setHoveredPeriodBarIndex(null)}
+                          className="cursor-pointer"
+                        >
+                          {isHovered && (
+                            <rect x={x - 6} y="10" width={barWidth + 12} height="165" fill="#EFF6FF" rx="6" className="transition duration-150" />
+                          )}
+                          <rect
+                            x={x} y={y} width={barWidth} height={barHeight}
+                            fill={isHovered ? 'url(#periodBarGradientHover)' : 'url(#periodBarGradient)'}
+                            rx="3"
+                            className="transition duration-150"
+                          />
+                          {isHovered && (
+                            <g>
+                              <rect x={Math.max(10, x - 45)} y={Math.max(5, y - 28)} width="120" height="22" fill="#1E293B" rx="4" />
+                              <text
+                                x={Math.max(10, x - 45) + 60}
+                                y={Math.max(5, y - 28) + 14}
+                                textAnchor="middle"
+                                className="fill-white text-[9px] font-black font-mono"
+                              >
+                                {formatVND(point.total)}
+                              </text>
+                            </g>
+                          )}
+                          <text
+                            x={x + barWidth / 2} y="185" textAnchor="middle"
+                            className={`text-[8.5px] font-mono font-bold ${isHovered ? 'fill-blue-600 font-extrabold' : 'fill-gray-500'}`}
+                          >
+                            {monthNames[point.month - 1]}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                </div>
+              )}
             </div>
           </div>
 

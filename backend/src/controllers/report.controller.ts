@@ -3,11 +3,45 @@ import ReportService from '../services/report.service';
 
 /**
  * GET /api/report/revenue?startDate=&endDate=&storeId=
+ * GET /api/report/revenue?mode=month&month=&year=&storeId=
+ * GET /api/report/revenue?mode=quarter&quarter=&year=&storeId=
+ * GET /api/report/revenue?mode=year&year=&storeId=
  * Validate: startDate <= endDate, ngược lại trả "Khoảng thời gian không hợp lệ"
+ * Không truyền `mode` (hoặc mode=custom) giữ nguyên hành vi cũ theo startDate/endDate.
  */
 export const getRevenueReport = async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate, storeId } = req.query;
+    const { mode, startDate, endDate, storeId, month, year, quarter } = req.query;
+    const sId = storeId as string | undefined;
+
+    if (mode === 'month') {
+      const m = parseInt(month as string, 10);
+      const y = parseInt(year as string, 10);
+      if (!m || !y || m < 1 || m > 12) {
+        return res.status(400).json({ message: 'month và year không hợp lệ' });
+      }
+      const result = await ReportService.getMonthRevenue(m, y, sId);
+      return res.json(result);
+    }
+
+    if (mode === 'quarter') {
+      const q = parseInt(quarter as string, 10);
+      const y = parseInt(year as string, 10);
+      if (!q || !y || q < 1 || q > 4) {
+        return res.status(400).json({ message: 'quarter và year không hợp lệ' });
+      }
+      const result = await ReportService.getQuarterRevenue(q, y, sId);
+      return res.json(result);
+    }
+
+    if (mode === 'year') {
+      const y = parseInt(year as string, 10);
+      if (!y) {
+        return res.status(400).json({ message: 'year không hợp lệ' });
+      }
+      const result = await ReportService.getYearRevenue(y, sId);
+      return res.json(result);
+    }
 
     if (!startDate || !endDate) {
       return res.status(400).json({ message: 'startDate và endDate là bắt buộc' });

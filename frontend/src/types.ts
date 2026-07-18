@@ -235,6 +235,20 @@ export interface ApiRevenueReport {
   topProducts: ApiTopProduct[];
 }
 
+export interface ApiMonthRevenueReport {
+  total: number;
+}
+
+export interface ApiMonthlyBreakdownPoint {
+  month: number;
+  total: number;
+}
+
+export interface ApiPeriodRevenueReport {
+  total: number;
+  breakdown: ApiMonthlyBreakdownPoint[];
+}
+
 export interface ApiInventoryReportItem {
   productId: string;
   productName: string | null;

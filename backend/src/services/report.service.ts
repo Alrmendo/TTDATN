@@ -89,6 +89,64 @@ const ReportService = {
   },
 
   /**
+   * Gộp doanh thu theo tháng trong khoảng [startMonth, endMonth] của `year`.
+   * Dùng chung cho cả báo cáo theo quý (3 tháng) và theo năm (12 tháng).
+   */
+  async getMonthlyBreakdown(year: number, startMonth: number, endMonth: number, storeId?: string) {
+    const rangeStart = new Date(year, startMonth - 1, 1, 0, 0, 0, 0);
+    const rangeEnd = new Date(year, endMonth, 0, 23, 59, 59, 999); // ngày cuối cùng của endMonth
+
+    const where: any = {
+      status: 'completed',
+      createdAt: { [Op.between]: [rangeStart, rangeEnd] },
+    };
+    if (storeId) where.storeId = storeId;
+
+    const rows = await Invoice.findAll({
+      attributes: [
+        [Sequelize.fn('EXTRACT', Sequelize.literal('MONTH FROM "createdAt"')), 'month'],
+        [Sequelize.fn('SUM', Sequelize.col('totalAmount')), 'total'],
+      ],
+      where,
+      group: ['month'],
+      raw: true,
+    });
+
+    const totalsByMonth = new Map<number, number>();
+    for (const row of rows as any[]) {
+      totalsByMonth.set(Number(row.month), Number(row.total));
+    }
+
+    const breakdown: { month: number; total: number }[] = [];
+    let total = 0;
+    for (let m = startMonth; m <= endMonth; m++) {
+      const monthTotal = totalsByMonth.get(m) || 0;
+      breakdown.push({ month: m, total: monthTotal });
+      total += monthTotal;
+    }
+
+    return { total, breakdown };
+  },
+
+  /** Tổng doanh thu 1 tháng cụ thể. */
+  async getMonthRevenue(month: number, year: number, storeId?: string) {
+    const { total } = await this.getMonthlyBreakdown(year, month, month, storeId);
+    return { total };
+  },
+
+  /** Doanh thu theo 3 tháng trong 1 quý. */
+  async getQuarterRevenue(quarter: number, year: number, storeId?: string) {
+    const startMonth = (quarter - 1) * 3 + 1;
+    const endMonth = startMonth + 2;
+    return this.getMonthlyBreakdown(year, startMonth, endMonth, storeId);
+  },
+
+  /** Doanh thu theo 12 tháng trong 1 năm. */
+  async getYearRevenue(year: number, storeId?: string) {
+    return this.getMonthlyBreakdown(year, 1, 12, storeId);
+  },
+
+  /**
    * Báo cáo tồn kho — lọc theo storeId (optional, không truyền = toàn hệ thống).
    */
   async getInventoryReport(storeId?: string) {
