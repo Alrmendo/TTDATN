@@ -3,7 +3,7 @@ declare global {
     interface Request {
       user?: {
         userId: string;
-        role: 'Manager' | 'Staff' | 'WarehouseStaff';
+        role: 'Manager' | 'Staff' | 'WarehouseStaff' | 'BranchManager';
         storeId: string | null;
       };
     }

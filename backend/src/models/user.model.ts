@@ -7,7 +7,7 @@ export class User extends Model {
   declare email: string;
   declare passwordHash: string;
   declare phone: string | null;
-  declare role: 'Manager' | 'Staff' | 'WarehouseStaff';
+  declare role: 'Manager' | 'Staff' | 'WarehouseStaff' | 'BranchManager';
   declare storeId: string | null;
   declare salary: number | null;
   declare isActive: boolean;
@@ -25,7 +25,7 @@ User.init(
     passwordHash: { type: DataTypes.STRING, allowNull: false },
     phone: { type: DataTypes.STRING, allowNull: true },
     role: {
-      type: DataTypes.ENUM('Manager', 'Staff', 'WarehouseStaff'),
+      type: DataTypes.ENUM('Manager', 'Staff', 'WarehouseStaff', 'BranchManager'),
       allowNull: false,
     },
     storeId: { type: DataTypes.UUID, allowNull: true },

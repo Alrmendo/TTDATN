@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 
 interface JwtPayload {
   userId: string;
-  role: 'Manager' | 'Staff' | 'WarehouseStaff';
+  role: 'Manager' | 'Staff' | 'WarehouseStaff' | 'BranchManager';
   storeId: string | null;
 }
 

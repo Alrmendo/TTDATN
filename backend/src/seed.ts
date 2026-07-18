@@ -76,6 +76,10 @@ const seed = async (): Promise<void> => {
     { fullName: 'Hoàng Văn Lộc',      email: 'warehouse.q1@test.com',  role: 'WarehouseStaff', storeId: q1.id, salary: 7500000 },
     { fullName: 'Đặng Thị Kiêm',      email: 'warehouse.q7@test.com',  role: 'WarehouseStaff', storeId: q7.id, salary: 7500000 },
     { fullName: 'Nguyễn Văn Vũ',         email: 'warehouse.bt@test.com',  role: 'WarehouseStaff', storeId: bt.id, salary: 7500000 },
+    // BranchManager — 1 người/chi nhánh
+    { fullName: 'Trịnh Văn Bình',     email: 'branchmanager.q1@test.com', role: 'BranchManager', storeId: q1.id, salary: 9000000 },
+    { fullName: 'Ngô Thị Hạnh',       email: 'branchmanager.q7@test.com', role: 'BranchManager', storeId: q7.id, salary: 9000000 },
+    { fullName: 'Đoàn Văn Sơn',       email: 'branchmanager.bt@test.com', role: 'BranchManager', storeId: bt.id, salary: 9000000 },
   ];
 
   const userMap: Record<string, User> = {};
@@ -412,6 +416,7 @@ const seed = async (): Promise<void> => {
   console.log('   Manager:        manager@test.com / password123');
   console.log('   Staff (mẫu):    staff.q1@test.com / password123');
   console.log('   WarehouseStaff: warehouse.q1@test.com / password123');
+  console.log('   BranchManager (mẫu): branchmanager.q1@test.com / password123');
   process.exit(0);
 };
 
