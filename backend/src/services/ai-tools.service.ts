@@ -78,20 +78,23 @@ export async function executeTool(
           const month = parseInt(String(args.month), 10);
           const year = parseInt(String(args.year), 10);
           if (!month || !year) return { error: 'Thiếu hoặc sai month/year' };
-          return await ReportService.getMonthRevenue(month, year, storeId);
+          const result = await ReportService.getMonthRevenue(month, year, storeId);
+          return { storeId: storeId || null, ...result };
         }
 
         if (mode === 'quarter') {
           const quarter = parseInt(String(args.quarter), 10);
           const year = parseInt(String(args.year), 10);
           if (!quarter || !year) return { error: 'Thiếu hoặc sai quarter/year' };
-          return await ReportService.getQuarterRevenue(quarter, year, storeId);
+          const result = await ReportService.getQuarterRevenue(quarter, year, storeId);
+          return { storeId: storeId || null, ...result };
         }
 
         if (mode === 'year') {
           const year = parseInt(String(args.year), 10);
           if (!year) return { error: 'Thiếu hoặc sai year' };
-          return await ReportService.getYearRevenue(year, storeId);
+          const result = await ReportService.getYearRevenue(year, storeId);
+          return { storeId: storeId || null, ...result };
         }
 
         const startDate = args.startDate as string | undefined;

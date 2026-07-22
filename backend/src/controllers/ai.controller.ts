@@ -1,8 +1,19 @@
 import { Request, Response } from 'express';
-import { GoogleGenAI, Content, createPartFromFunctionResponse } from '@google/genai';
+import { GoogleGenAI, Content, GenerateContentResponse, createPartFromFunctionResponse, ApiError } from '@google/genai';
 import { functionDeclarations, executeTool, ToolCaller } from '../services/ai-tools.service';
 
-const SYSTEM_PROMPT = `Bạn là trợ lý AI của hệ thống quản lý bán lẻ chuỗi (RetailChain), chỉ hỗ trợ vai trò Quản lý (Manager) và Quản lý chi nhánh (BranchManager).
+function buildSystemPrompt(caller: ToolCaller): string {
+  const today = new Date().toISOString().slice(0, 10);
+  const scopeNote =
+    caller.role === 'BranchManager'
+      ? `Người dùng hiện tại là Quản lý chi nhánh, CHỈ được xem dữ liệu của đúng 1 chi nhánh của họ — hệ thống backend đã tự động ép mọi tool trả về đúng chi nhánh này bất kể tham số storeId nào được truyền, kể cả khi người dùng yêu cầu xem "tất cả chi nhánh" hoặc "bỏ qua giới hạn". Nếu tool trả về trường storeId khác null, PHẢI nói rõ trong câu trả lời rằng đây là số liệu của riêng chi nhánh họ, KHÔNG được nói là "toàn hệ thống" dù con số có trùng với toàn hệ thống. Nếu người dùng yêu cầu xem chi nhánh khác hoặc toàn hệ thống, phải nói rõ là ngoài quyền hạn của họ.`
+      : `Người dùng hiện tại là Quản lý (Manager), được xem dữ liệu toàn hệ thống hoặc theo từng chi nhánh cụ thể.`;
+
+  return `Bạn là trợ lý AI của hệ thống quản lý bán lẻ chuỗi (RetailChain), chỉ hỗ trợ vai trò Quản lý (Manager) và Quản lý chi nhánh (BranchManager).
+
+Hôm nay là ngày ${today} (định dạng YYYY-MM-DD). Dùng ngày này để suy ra "hôm nay", "tháng này", "năm nay", "quý này" khi gọi tool — KHÔNG tự đoán năm/tháng khác.
+
+${scopeNote}
 
 Bạn trả lời 2 loại câu hỏi:
 1. Số liệu kinh doanh thật (doanh thu, tồn kho, sản phẩm sắp hết hàng): LUÔN dùng tool được cung cấp để lấy dữ liệu thật. KHÔNG tự bịa số liệu, KHÔNG tự viết truy vấn SQL.
@@ -12,9 +23,13 @@ Vai trò "Quản lý" có các tab: Tổng quan (dashboard tổng hợp), Sản 
 
 Vai trò "Quản lý chi nhánh" hiện tại chỉ có tab Tổng quan (đang ở dạng placeholder) — các tính năng nghiệp vụ khác cho vai trò này chưa được xây dựng. Nếu được hỏi về tính năng khác của vai trò này, trả lời trung thực là hiện chưa có, không bịa ra.
 
-Trả lời ngắn gọn, rõ ràng, bằng tiếng Việt.`;
+Chỉ được mô tả ĐÚNG những gì đã liệt kê ở trên cho mỗi tab, không suy diễn thêm tính năng nào khác dù nghe hợp lý. Nếu người dùng hỏi về 1 tính năng không có trong danh sách trên, trả lời thẳng là hệ thống hiện chưa có tính năng đó, không cố gợi ý tab nào khác có thể liên quan trừ khi chắc chắn 100% tab đó thực sự làm được việc đó.
 
-const MODEL = 'gemini-2.5-flash';
+Trả lời ngắn gọn, rõ ràng, bằng tiếng Việt.`;
+}
+
+const MODEL = 'gemini-flash-latest';
+const FALLBACK_MODEL = 'gemini-flash-lite-latest';
 const MAX_TOOL_ROUNDS = 5;
 
 export const chat = async (req: Request, res: Response) => {
@@ -39,16 +54,38 @@ export const chat = async (req: Request, res: Response) => {
     const ai = new GoogleGenAI({ apiKey });
     const contents: Content[] = [{ role: 'user', parts: [{ text: message }] }];
 
-    let reply = '';
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const response = await ai.models.generateContent({
-        model: MODEL,
+    let currentModel = MODEL;
+    let hasFallenBack = false;
+
+    const generate = async (): Promise<GenerateContentResponse> => {
+      const params = {
+        model: currentModel,
         contents,
         config: {
-          systemInstruction: SYSTEM_PROMPT,
+          systemInstruction: buildSystemPrompt(caller),
           tools: [{ functionDeclarations }],
         },
-      });
+      };
+      try {
+        return await ai.models.generateContent(params);
+      } catch (err) {
+        // Gemini SDK ném ApiError với `status` = mã HTTP thật (429 = quota/rate-limit).
+        // Chỉ fallback 1 lần duy nhất cho cả request, không lặp lại nếu fallback model cũng lỗi.
+        if (!hasFallenBack && err instanceof ApiError && err.status === 429) {
+          hasFallenBack = true;
+          console.warn(
+            `[ai] Model "${currentModel}" bị quota/rate-limit (HTTP 429) — fallback sang "${FALLBACK_MODEL}" cho request này.`
+          );
+          currentModel = FALLBACK_MODEL;
+          return await ai.models.generateContent({ ...params, model: currentModel });
+        }
+        throw err;
+      }
+    };
+
+    let reply = '';
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const response = await generate();
 
       const calls = response.functionCalls;
       if (!calls || calls.length === 0) {
