@@ -3,6 +3,7 @@ import { sequelize } from '../config/database';
 
 export type PurchaseOrderStatus =
   | 'pending'
+  | 'debt'
   | 'completed'
   | 'cancelled';
 
@@ -52,6 +53,7 @@ PurchaseOrder.init(
     status: {
       type: DataTypes.ENUM(
         'pending',
+        'debt',
         'completed',
         'cancelled'
       ),

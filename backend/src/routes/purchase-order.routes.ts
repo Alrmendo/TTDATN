@@ -10,6 +10,10 @@ import {
   confirmReceipt,
   cancelPurchaseOrder,
 } from '../controllers/purchase-order.controller';
+import {
+  getPurchaseOrderPaymentSummary,
+  recordPurchaseOrderPayment,
+} from '../controllers/purchase-order-payment.controller';
 
 const router = Router();
 
@@ -35,6 +39,20 @@ router.post(
   '/',
   roleMiddleware(['Manager']),
   createPurchaseOrder
+);
+
+// GET /api/purchase-orders/:id/payments — xem lịch sử và công nợ
+router.get(
+  '/:id/payments',
+  roleMiddleware(['Manager', 'WarehouseStaff']),
+  getPurchaseOrderPaymentSummary
+);
+
+// POST /api/purchase-orders/:id/payments — Manager ghi nhận 1 lần thanh toán
+router.post(
+  '/:id/payments',
+  roleMiddleware(['Manager']),
+  recordPurchaseOrderPayment
 );
 
 // PUT /api/purchase-orders/:id/confirm — WarehouseStaff only

@@ -12,6 +12,7 @@ import { LoyaltyPoint } from './loyalty-point.model';
 import { Supplier } from './supplier.model';
 import { PurchaseOrder } from './purchase-order.model';
 import { PurchaseOrderDetail } from './purchase-order-detail.model';
+import { PurchaseOrderPayment } from './purchase-order-payment.model';
 import { StockTransfer } from './stock-transfer.model';
 
 // --- Users & Stores ---
@@ -41,6 +42,10 @@ PurchaseOrder.hasMany(PurchaseOrderDetail, { foreignKey: 'purchaseOrderId', as: 
 PurchaseOrderDetail.belongsTo(PurchaseOrder, { foreignKey: 'purchaseOrderId' });
 PurchaseOrderDetail.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 Product.hasMany(PurchaseOrderDetail, { foreignKey: 'productId' });
+PurchaseOrder.hasMany(PurchaseOrderPayment, { foreignKey: 'purchaseOrderId', as: 'payments', onDelete: 'CASCADE' });
+PurchaseOrderPayment.belongsTo(PurchaseOrder, { foreignKey: 'purchaseOrderId' });
+PurchaseOrderPayment.belongsTo(User, { foreignKey: 'userId', as: 'payer' });
+User.hasMany(PurchaseOrderPayment, { foreignKey: 'userId' });
 
 // --- Invoices ---
 Invoice.belongsTo(Store, { foreignKey: 'storeId', as: 'store' });
@@ -91,5 +96,6 @@ export {
   Supplier,
   PurchaseOrder,
   PurchaseOrderDetail,
+  PurchaseOrderPayment,
   StockTransfer,
 };

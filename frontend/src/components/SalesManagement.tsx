@@ -15,6 +15,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { API_BASE } from '../config/api';
+import { downloadInvoicePdf } from '../utils/invoicePdf';
 
 interface SalesManagementProps {
   products: Product[];
@@ -186,7 +187,7 @@ export default function SalesManagement({
   };
 
   // Shared add/update-quantity call — addItem upserts by (invoiceId, productId)
-  const submitItem = async (productId: string, quantity: number) => {
+  const submitItem = async (productId: string, quantity: number, product?: ApiProduct) => {
     if (!currentInvoiceId) return;
     setIsSubmittingItem(true);
     setItemErrorProductId(null);
@@ -212,6 +213,11 @@ export default function SalesManagement({
       // DECIMAL columns (unitPrice, subtotal) come back as strings from Sequelize/Postgres
       const updatedDetail: ApiInvoiceDetail = {
         ...(data as ApiInvoiceDetail),
+        // The add-item endpoint returns only the detail row. Keep the product
+        // selected in the search result so the cart and PDF never show its ID.
+        product: product
+          ? { productName: product.productName, sku: product.sku }
+          : (data.product ?? invoiceDetails.find((d) => d.productId === productId)?.product),
         quantity: Number(data.quantity),
         unitPrice: Number(data.unitPrice),
         subtotal: Number(data.subtotal),
@@ -240,7 +246,7 @@ export default function SalesManagement({
   const handleAddItem = (product: ApiProduct) => {
     const existing = invoiceDetails.find((d) => d.productId === product.id);
     const nextQty = existing ? existing.quantity + 1 : 1;
-    submitItem(product.id, nextQty);
+    submitItem(product.id, nextQty, product);
   };
 
   const handleChangeQuantity = (detailId: string, delta: -1 | 1) => {
@@ -347,6 +353,26 @@ export default function SalesManagement({
       }
 
       showToast('Thanh toán thành công');
+      const shouldPrint = window.confirm('Thanh toán thành công. Bạn có muốn tải hóa đơn PDF không?');
+      if (shouldPrint) {
+        downloadInvoicePdf({
+          id: currentInvoiceId,
+          storeId: currentUser?.storeId ?? '',
+          staffId: currentUser?.id ?? '',
+          customerId: selectedCustomer?.id ?? null,
+          promotionId: promotionId || null,
+          status: 'completed',
+          subtotal: invoiceSubtotal,
+          discountAmount,
+          totalAmount,
+          paymentMethod,
+          paymentStatus: 'success',
+          paidAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          invoiceDetails,
+          customer: selectedCustomer,
+        });
+      }
       await handleStartOrder();
     } catch {
       setPaymentError('Không thể kết nối đến server');

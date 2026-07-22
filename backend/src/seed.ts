@@ -21,6 +21,7 @@ import {
   InvoiceDetail,
 } from './models';
 import bcrypt from 'bcrypt';
+import { Op } from 'sequelize';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -250,7 +251,7 @@ const seed = async (): Promise<void> => {
   if (poCount > 0) {
     console.log(`⏭  PurchaseOrders already exist (${poCount}), skipping.`);
   } else {
-    const poStatuses: Array<'pending'|'completed'|'cancelled'> = ['completed','completed','completed','pending','cancelled','completed','pending'];
+    const poStatuses: Array<'pending'|'debt'|'completed'|'cancelled'> = ['debt','debt','debt','pending','cancelled','debt','pending'];
     for (let day = 6; day >= 0; day--) {
       const store    = stores[day % stores.length];
       const supplier = suppliers[day % suppliers.length];
@@ -267,15 +268,15 @@ const seed = async (): Promise<void> => {
         status,
         totalCost,
         createdBy:   manager.id,
-        confirmedBy: status==='completed' ? wh.id : null,
+        confirmedBy: status==='debt' || status==='completed' ? wh.id : null,
         createdAt,
-        confirmedAt: status==='completed' ? randomTs(Math.max(day-1,0)) : null,
+        confirmedAt: status==='debt' || status==='completed' ? randomTs(Math.max(day-1,0)) : null,
       });
       await PurchaseOrderDetail.bulkCreate(detailData.map(d=>({
         purchaseOrderId: po.id,
         productId:       d.p.id,
         quantity:        d.qty,
-        receivedQuantity:status==='completed' ? d.qty : null,
+        receivedQuantity:status==='debt' || status==='completed' ? d.qty : null,
         unitCost:        d.cost,
       })));
       console.log(`✅ PO day-${day}: ${supplier.supplierName.slice(0,20)}… → ${store.storeName} [${status}] ${totalCost.toLocaleString('vi-VN')}đ`);
@@ -309,9 +310,14 @@ const seed = async (): Promise<void> => {
   // ══════════════════════════════════════════════════════════
   // 11. INVOICES + INVOICE DETAILS
   // ══════════════════════════════════════════════════════════
-  const invoiceCount = await Invoice.count();
+  const invoiceSince = new Date();
+  invoiceSince.setHours(0, 0, 0, 0);
+  invoiceSince.setDate(invoiceSince.getDate() - 6);
+  const invoiceCount = await Invoice.count({
+    where: { createdAt: { [Op.gte]: invoiceSince } },
+  });
   if (invoiceCount > 0) {
-    console.log(`⏭  Invoices already exist (${invoiceCount}), skipping.`);
+    console.log(`⏭  Invoices from the last 7 days already exist (${invoiceCount}), skipping.`);
   } else {
     const pmethods = ['cash','card','transfer'];
 

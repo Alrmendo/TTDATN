@@ -63,7 +63,7 @@ interface ApiPurchaseOrder {
   id: string;
   supplierId: string;
   storeId: string;
-  status: 'pending' | 'completed' | 'cancelled';
+  status: 'pending' | 'debt' | 'completed' | 'cancelled';
   totalCost: string;
   createdBy: string;
   confirmedBy: string | null;
@@ -74,6 +74,19 @@ interface ApiPurchaseOrder {
   creator?: { id: string; fullName: string };
   confirmer?: { id: string; fullName: string } | null;
   details?: ApiOrderDetail[];
+}
+
+interface ApiPaymentSummary {
+  purchaseOrderId: string;
+  totalCost: number;
+  totalPaid: number;
+  remainingDebt: number;
+  payments: {
+    id: string;
+    amount: number | string;
+    paidAt: string;
+    payer?: { fullName: string };
+  }[];
 }
 
 interface ReceivedItem {
@@ -146,12 +159,13 @@ export default function WarehouseManagement({
 
   // ─── Đơn nhập hàng — API state ──────────────────────────────────────────────
   const [apiOrders, setApiOrders] = useState<ApiPurchaseOrder[]>([]);
+  const [orderPaymentSummaries, setOrderPaymentSummaries] = useState<Record<string, ApiPaymentSummary>>({});
   const [apiLoading, setApiLoading] = useState(false);
   const [apiError, setApiError] = useState('');
 
   // Filter / pagination
   const [poSearch, setPoSearch] = useState('');
-  const [poStatusFilter, setPoStatusFilter] = useState<'Tất cả' | 'Chờ xác nhận' | 'Hoàn thành' | 'Đã hủy'>('Tất cả');
+  const [poStatusFilter, setPoStatusFilter] = useState<'Tất cả' | 'Chờ xác nhận' | 'Còn nợ' | 'Hoàn thành' | 'Đã hủy'>('Tất cả');
   const [poCurrentPage, setPoCurrentPage] = useState(1);
   const poItemsPerPage = 5;
 
@@ -161,6 +175,9 @@ export default function WarehouseManagement({
   const [receivedItems, setReceivedItems] = useState<ReceivedItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmError, setConfirmError] = useState('');
+  const [paymentSummary, setPaymentSummary] = useState<ApiPaymentSummary | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   // Create PO modal (Manager)
   const [isCreatingPO, setIsCreatingPO] = useState(false);
@@ -179,11 +196,13 @@ export default function WarehouseManagement({
   // status map API → UI
   const STATUS_MAP: Record<string, string> = {
     pending: 'Chờ xác nhận',
+    debt: 'Còn nợ',
     completed: 'Hoàn thành',
     cancelled: 'Đã hủy',
   };
   const STATUS_MAP_REVERSE: Record<string, string> = {
     'Chờ xác nhận': 'pending',
+    'Còn nợ': 'debt',
     'Hoàn thành': 'completed',
     'Đã hủy': 'cancelled',
     'Tất cả': '',
@@ -201,7 +220,27 @@ export default function WarehouseManagement({
       if (poSearch.trim()) params.set('search', poSearch.trim());
       const res = await fetch(`${API}/api/purchase-orders?${params}`, { headers: authHeaders() });
       if (!res.ok) throw new Error((await res.json()).message ?? 'Lỗi tải dữ liệu');
-      setApiOrders(await res.json());
+      const orders: ApiPurchaseOrder[] = await res.json();
+      setApiOrders(orders);
+
+      // Trạng thái hiển thị phải phản ánh cả công nợ sau khi đã nhập kho.
+      const completedOrders = orders.filter(order => order.status === 'debt' || order.status === 'completed');
+      const paymentResults = await Promise.all(
+        completedOrders.map(async order => {
+          try {
+            const paymentRes = await fetch(`${API}/api/purchase-orders/${order.id}/payments`, {
+              headers: authHeaders(),
+            });
+            if (!paymentRes.ok) return null;
+            return [order.id, await paymentRes.json() as ApiPaymentSummary] as const;
+          } catch {
+            return null;
+          }
+        })
+      );
+      setOrderPaymentSummaries(
+        Object.fromEntries(paymentResults.filter((result): result is [string, ApiPaymentSummary] => result !== null))
+      );
     } catch (e) {
       setApiError(e instanceof Error ? e.message : 'Lỗi kết nối server');
     } finally {
@@ -238,12 +277,19 @@ export default function WarehouseManagement({
   const openDetail = async (order: ApiPurchaseOrder) => {
     setSelectedPO(order);
     setConfirmError('');
+    setPaymentSummary(null);
+    setPaymentAmount('');
     setDetailLoading(true);
     try {
-      const res = await fetch(`${API}/api/purchase-orders/${order.id}`, { headers: authHeaders() });
-      if (!res.ok) throw new Error();
-      const full: ApiPurchaseOrder = await res.json();
+      const [orderRes, paymentRes] = await Promise.all([
+        fetch(`${API}/api/purchase-orders/${order.id}`, { headers: authHeaders() }),
+        fetch(`${API}/api/purchase-orders/${order.id}/payments`, { headers: authHeaders() }),
+      ]);
+      if (!orderRes.ok || !paymentRes.ok) throw new Error();
+      const full: ApiPurchaseOrder = await orderRes.json();
+      const summary: ApiPaymentSummary = await paymentRes.json();
       setSelectedPO(full);
+      setPaymentSummary(summary);
       setReceivedItems(
         (full.details ?? []).map(d => ({
           productId: d.productId,
@@ -260,6 +306,8 @@ export default function WarehouseManagement({
   const closeDetail = () => {
     setSelectedPO(null);
     setReceivedItems([]);
+    setPaymentSummary(null);
+    setPaymentAmount('');
     setConfirmError('');
   };
 
@@ -285,6 +333,33 @@ export default function WarehouseManagement({
       setConfirmError(e instanceof Error ? e.message : 'Lỗi không xác định');
     } finally {
       setConfirmLoading(false);
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!selectedPO || !paymentAmount) return;
+    setPaymentLoading(true);
+    setConfirmError('');
+    try {
+      const res = await fetch(`${API}/api/purchase-orders/${selectedPO.id}/payments`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ amount: Number(paymentAmount) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? 'Ghi nhận thanh toán thất bại');
+      setPaymentSummary(data);
+      setSelectedPO(prev => prev ? {
+        ...prev,
+        status: data.remainingDebt > 0.005 ? 'debt' : 'completed',
+      } : prev);
+      setPaymentAmount('');
+      triggerNotification('Đã ghi nhận lần thanh toán cho nhà cung cấp.');
+      fetchOrders();
+    } catch (e) {
+      setConfirmError(e instanceof Error ? e.message : 'Lỗi không xác định');
+    } finally {
+      setPaymentLoading(false);
     }
   };
 
@@ -741,6 +816,7 @@ export default function WarehouseManagement({
                   className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-xs font-semibold">
                   <option value="Tất cả">Tất cả</option>
                   <option value="Chờ xác nhận">Chờ xác nhận</option>
+                  <option value="Còn nợ">Còn nợ</option>
                   <option value="Hoàn thành">Hoàn thành</option>
                   <option value="Đã hủy">Đã hủy</option>
                 </select>
@@ -794,8 +870,11 @@ export default function WarehouseManagement({
                     </tr>
                   ) : currentPOItems.map((po) => {
                     const isPending = po.status === 'pending';
+                    const isDebt = po.status === 'debt';
                     const isCompleted = po.status === 'completed';
                     const isCancelled = po.status === 'cancelled';
+                    const paymentSummary = orderPaymentSummaries[po.id];
+                    const hasDebt = isDebt || (isCompleted && paymentSummary && paymentSummary.remainingDebt > 0.005);
                     return (
                       <tr key={po.id} className="hover:bg-gray-50/50 transition">
                         <td className="py-3.5 px-4 font-bold text-[#3B82F6] font-mono text-xs">
@@ -811,9 +890,9 @@ export default function WarehouseManagement({
                               <span className="w-1.5 h-1.5 rounded-full bg-orange-600 mr-1.5 animate-pulse"></span>Chờ xác nhận
                             </span>
                           )}
-                          {isCompleted && (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mr-1.5"></span>Hoàn thành
+                          {(isDebt || isCompleted) && (
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border shadow-2xs ${hasDebt ? 'bg-orange-100 text-orange-800 border-orange-200' : 'bg-emerald-100 text-emerald-800 border-emerald-200'}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${hasDebt ? 'bg-orange-600 animate-pulse' : 'bg-emerald-600'}`}></span>{hasDebt ? 'CÒN NỢ' : 'HOÀN THÀNH'}
                             </span>
                           )}
                           {isCancelled && (
@@ -1003,9 +1082,9 @@ export default function WarehouseManagement({
                             <span className="w-1.5 h-1.5 rounded-full bg-orange-600 mr-1.5 animate-pulse"></span>Chờ xác nhận
                           </span>
                         )}
-                        {selectedPO.status === 'completed' && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mr-1.5"></span>Hoàn thành
+                        {(selectedPO.status === 'debt' || selectedPO.status === 'completed') && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${selectedPO.status === 'debt' || (paymentSummary && paymentSummary.remainingDebt > 0.005) ? 'bg-orange-100 text-orange-800 border-orange-200' : 'bg-emerald-100 text-emerald-800 border-emerald-200'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${selectedPO.status === 'debt' || (paymentSummary && paymentSummary.remainingDebt > 0.005) ? 'bg-orange-600 animate-pulse' : 'bg-emerald-600'}`}></span>{selectedPO.status === 'debt' || (paymentSummary && paymentSummary.remainingDebt > 0.005) ? 'CÒN NỢ' : 'HOÀN THÀNH'}
                           </span>
                         )}
                         {selectedPO.status === 'cancelled' && (
@@ -1096,6 +1175,33 @@ export default function WarehouseManagement({
                   </div>
 
                   {/* Status timeline */}
+                  {paymentSummary && (selectedPO.status === 'debt' || selectedPO.status === 'completed') && (
+                    <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/50 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-black text-gray-900 uppercase tracking-wide text-[10px]">Công nợ nhà cung cấp</h4>
+                        <span className={`font-black font-mono text-sm ${paymentSummary.remainingDebt > 0 ? 'text-orange-600' : 'text-emerald-600'}`}>
+                          {paymentSummary.remainingDebt > 0 ? 'Còn nợ' : 'Đã thanh toán đủ'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-[10px]">
+                        <div><span className="block text-gray-500">Tổng phải trả</span><b className="font-mono">{formatVND(paymentSummary.totalCost)}</b></div>
+                        <div><span className="block text-gray-500">Đã trả</span><b className="font-mono text-emerald-700">{formatVND(paymentSummary.totalPaid)}</b></div>
+                        <div><span className="block text-gray-500">Còn nợ</span><b className="font-mono text-orange-700">{formatVND(paymentSummary.remainingDebt)}</b></div>
+                      </div>
+                      {paymentSummary.payments.length > 0 && (
+                        <div className="border-t border-blue-100 pt-2 space-y-1">
+                          {paymentSummary.payments.map(payment => (
+                            <div key={payment.id} className="flex justify-between text-[10px] text-gray-600">
+                              <span>{fmtDate(payment.paidAt)} · {payment.payer?.fullName ?? 'Quản lý'}</span>
+                              <b className="font-mono text-emerald-700">{formatVND(payment.amount)}</b>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Status timeline */}
                   <div className="p-4 bg-gray-50 rounded-xl space-y-3.5">
                     <h4 className="font-bold text-gray-950 uppercase tracking-wide text-[10px]">Tiến độ lưu trữ đơn hàng</h4>
                     <div className="space-y-4 relative pl-4 border-l-2 border-blue-500/30">
@@ -1111,10 +1217,10 @@ export default function WarehouseManagement({
                             <div className="font-bold text-orange-600 text-xs">Đang chờ thủ kho kiểm định</div>
                             <p className="text-[10.5px] text-gray-400 mt-0.5">Xe tải chở hàng đang di chuyển hoặc đang dỡ hàng tại cửa hàng. Chờ nhân viên kho kiểm đếm thực tế và bấm nút duyệt.</p>
                           </>
-                        ) : selectedPO.status === 'completed' ? (
+                        ) : selectedPO.status === 'debt' || selectedPO.status === 'completed' ? (
                           <>
-                            <span className="absolute -left-[22px] top-1 bg-emerald-500 w-3 h-3 rounded-full border-2 border-white"></span>
-                            <div className="font-bold text-emerald-600 text-xs">Phê duyệt - Nhập kho hoàn tất</div>
+                            <span className={`absolute -left-[22px] top-1 w-3 h-3 rounded-full border-2 border-white ${selectedPO.status === 'debt' ? 'bg-orange-500' : 'bg-emerald-500'}`}></span>
+                            <div className={`font-bold text-xs ${selectedPO.status === 'debt' ? 'text-orange-600' : 'text-emerald-600'}`}>{selectedPO.status === 'debt' ? 'Nhập kho hoàn tất - Còn nợ' : 'Phê duyệt - Thanh toán hoàn tất'}</div>
                             <p className="text-[10.5px] text-gray-400 mt-0.5">
                               Xác nhận bởi <span className="font-bold text-gray-700">{selectedPO.confirmer?.fullName ?? 'Thủ kho'}</span> lúc {selectedPO.confirmedAt ? fmtDate(selectedPO.confirmedAt) : '—'}.
                             </p>
@@ -1140,6 +1246,28 @@ export default function WarehouseManagement({
 
             {/* Footer */}
             <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end space-x-2">
+              {isManager && (selectedPO.status === 'debt' || selectedPO.status === 'completed') && paymentSummary && paymentSummary.remainingDebt > 0.005 && !detailLoading && (
+                <div className="mr-auto flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0.01"
+                    max={paymentSummary.remainingDebt}
+                    step="0.01"
+                    value={paymentAmount}
+                    onChange={e => setPaymentAmount(e.target.value)}
+                    placeholder="Số tiền trả"
+                    className="w-32 border border-gray-300 rounded-lg px-2 py-2 text-right font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={handlePayment}
+                    disabled={paymentLoading || !paymentAmount}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition"
+                  >
+                    {paymentLoading ? 'Đang lưu...' : 'Ghi nhận thanh toán'}
+                  </button>
+                </div>
+              )}
               {/* Nút Xác nhận nhận hàng — chỉ WarehouseStaff, đơn pending */}
               {selectedPO.status === 'pending' && isWarehouseStaff && !detailLoading && (
                 <button

@@ -229,14 +229,24 @@ export class PurchaseOrderService {
             order.storeId,
             received.productId,
             received.receivedQuantity,
-            'increase'
+            'increase',
+            t
           );
         }
       }
 
+      // Sau khi kiểm đếm, giá trị phải trả dựa trên số lượng thực nhận,
+      // không phải số lượng đặt ban đầu.
+      const totalCost = details.reduce(
+        (sum, detail) =>
+          sum + (detail.receivedQuantity ?? detail.quantity) * Number(detail.unitCost),
+        0
+      );
+
       await order.update(
         {
-          status: 'completed',
+          status: 'debt',
+          totalCost,
           confirmedBy,
           confirmedAt: new Date(),
         },
