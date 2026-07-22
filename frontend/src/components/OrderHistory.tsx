@@ -15,6 +15,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { API_BASE } from '../config/api';
+import { downloadInvoicePdf } from '../utils/invoicePdf';
 
 interface OrderHistoryProps {
   currentUser: { storeId: string | null; role: string };
@@ -95,9 +96,8 @@ export default function OrderHistory({ currentUser: _currentUser }: OrderHistory
     inv.invoiceDetails?.map((d) => d.product?.productName).filter(Boolean).join(', ') || '—';
 
   const handlePrint = (inv: ApiInvoice) => {
-    setSelectedInvoice(inv);
-    showToast(`Đang chuẩn bị in hóa đơn ${inv.id.slice(0, 8)}…`);
-    setTimeout(() => window.print(), 150);
+    downloadInvoicePdf(inv);
+    showToast(`Đã tải PDF hóa đơn ${inv.id.slice(0, 8)}…`);
   };
 
   // Loading & error screens — same pattern as AccountManagement
