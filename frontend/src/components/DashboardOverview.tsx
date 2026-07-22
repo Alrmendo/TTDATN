@@ -4,6 +4,7 @@ import { Invoice, Product, ApiInvoice } from '../types';
 import { fetchLowStock, ApiLowStockItem } from '../services/inventoryApi';
 import { fetchRevenueReport, toDateParam } from '../services/reportApi';
 import { getStores } from '../services/store.service';
+import { API_BASE } from '../config/api';
 
 interface DashboardOverviewProps {
   invoices: Invoice[];
@@ -55,7 +56,7 @@ export default function DashboardOverview({ invoices: _invoices, products: _prod
           fetchRevenueReport(yesterdayStr, yesterdayStr),
           fetchRevenueReport(weekStartStr, todayStr),
           fetchRevenueReport(monthStartStr, todayStr),
-          fetch('http://localhost:5000/api/invoices', {
+          fetch(`${API_BASE}/invoices`, {
             headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
           }).then(r => {
             if (!r.ok) throw new Error('Lỗi tải đơn hàng');

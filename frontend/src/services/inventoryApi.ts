@@ -1,8 +1,7 @@
 import { ApiStockItem, ApiLowStockItem } from '../types';
+import { API_BASE } from '../config/api';
 
 export type { ApiStockItem, ApiLowStockItem };
-
-const API_BASE = 'http://localhost:5000/api';
 
 const getToken = () => localStorage.getItem('token');
 

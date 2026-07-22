@@ -7,6 +7,7 @@ import {
   ApiInventoryReportItem,
   ApiInventoryReport,
 } from '../types';
+import { API_BASE } from '../config/api';
 
 export type {
   ApiDailyRevenuePoint,
@@ -17,8 +18,6 @@ export type {
   ApiInventoryReportItem,
   ApiInventoryReport,
 };
-
-const API_BASE = 'http://localhost:5000/api';
 
 const getToken = () => localStorage.getItem('token');
 

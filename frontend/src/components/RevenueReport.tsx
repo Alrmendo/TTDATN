@@ -3,6 +3,7 @@ import { ApiStore } from '../types';
 import { useRevenueReport } from '../hooks/useRevenueReport';
 import { usePeriodRevenueReport } from '../hooks/usePeriodRevenueReport';
 import { useInventoryReport } from '../hooks/useInventoryReport';
+import { API_BASE } from '../config/api';
 import {
   FileText,
   TrendingUp,
@@ -45,7 +46,7 @@ export default function RevenueReport() {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    fetch('http://localhost:5000/api/stores', {
+    fetch(`${API_BASE}/stores`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
