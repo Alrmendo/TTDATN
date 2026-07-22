@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TTDATN is a retail chain management system (Vietnamese: Tổ chức Bán lẻ Chuỗi) with a Node.js/Express/TypeScript backend and a React/Vite/TypeScript frontend. **Tuần 5 (17/7/2026) — buffer sửa lỗi + bắt đầu viết báo cáo.** Tất cả frontend components đã được wire vào real API: Auth, Account management, Inventory, Customer management, Sales/POS flow, Product/Category/Promotion management, Stock Transfer, Store management, Revenue/Inventory reports (RevenueReport.tsx), Warehouse management (Tồn kho + Đơn nhập hàng), và DashboardOverview (storesCount, bảng "Đơn hàng gần đây", revenue chart today/yesterday/week/month — tất cả đã wire API thật, path `reportApi.ts` đã đúng `/api/reports/revenue`). EmployeeManagement and ReportView have been removed from the codebase.
+TTDATN is a retail chain management system (Vietnamese: Tổ chức Bán lẻ Chuỗi) with a Node.js/Express/TypeScript backend and a React/Vite/TypeScript frontend. **Tuần 5 (22/7/2026) — chuẩn bị deploy (Render + Vercel) + thêm trợ lý AI (Gemini).** Tất cả frontend components đã được wire vào real API: Auth, Account management, Inventory, Customer management, Sales/POS flow, Product/Category/Promotion management, Stock Transfer, Store management, Revenue/Inventory reports (RevenueReport.tsx), Warehouse management (Tồn kho + Đơn nhập hàng), và DashboardOverview (storesCount, bảng "Đơn hàng gần đây", revenue chart today/yesterday/week/month — tất cả đã wire API thật). EmployeeManagement and ReportView have been removed from the codebase.
+
+**Deploy readiness:** toàn bộ URL API phía frontend đã centralize qua `frontend/src/config/api.ts` (đọc `VITE_API_URL`, fallback `http://localhost:5000/api`) — không còn hardcode `http://localhost:5000/api` rải rác, chuẩn bị deploy backend lên Render + frontend lên Vercel. `backend/src/config/database.ts` bật SSL có điều kiện (`dialectOptions.ssl` chỉ thêm khi `DATABASE_URL` chứa `render.com`) để không phá kết nối Postgres local không-SSL. Xem chi tiết ở mục "Frontend API service layer" và "Database Schema" bên dưới.
+
+**Role thứ 4 — BranchManager (Quản lý chi nhánh):** đã có schema/JWT/middleware/seed đầy đủ, nhưng UI hiện chỉ là **placeholder** (chỉ có tab "Tổng quan" hiện thông báo "đang được phát triển" — xem `App.tsx`), chưa có nghiệp vụ thật riêng cho role này. Không tạo được qua `AccountManagement.tsx` (dropdown role ở đó chỉ có Staff/WarehouseStaff/Manager) — hiện chỉ tạo được qua `npm run seed`.
+
+**Trợ lý AI (Gemini function-calling):** khung chat nổi (`AiAssistantWidget.tsx`), chỉ hiện cho Manager + BranchManager, trả lời số liệu kinh doanh thật (qua tool-calling gọi lại `ReportService`/`InventoryService`, không tự viết SQL) và hướng dẫn dùng hệ thống (dựa system prompt mô tả tab thật). Xem mục "AI Assistant" trong Backend bên dưới.
 
 ## Commands
 
@@ -27,20 +33,21 @@ npm run clean    # Remove dist/ and build artifacts
 ### Prerequisites
 - PostgreSQL running on `localhost:5432` with database `ttdatn_db`
 - Copy `.env.example` to `.env` in both `backend/` and `frontend/` before running
+- `backend/.env` cần thêm `GEMINI_API_KEY` (Gemini API key thật) nếu muốn dùng tính năng Trợ lý AI (`POST /api/ai/chat`) — không có key thì phần còn lại của backend vẫn chạy bình thường, chỉ endpoint này trả lỗi 500 khi gọi
 
 ## Architecture
 
 ### Backend (`backend/src/`)
 Layered architecture:
 
-- `server.ts` — Express entry point; mounts `/api/auth`, `/api/accounts`, `/api/stores`, `/api/inventory`, `/api/invoices`, `/api/customers`, `/api/loyalty-points`, `/api/products`, `/api/categories`, `/api/promotions`, `/api/purchase-orders`, `/api/suppliers`, `/api/stock-transfers`. **Lưu ý lịch sử:** mount `/api/loyalty-points` đã từng bị rớt khi merge PR Bán-hàng + main do conflict trên `server.ts` (controller/routes file vẫn tồn tại nhưng không reachable) — đã fix lại; khi resolve conflict trên file này trong tương lai, kiểm tra kỹ không làm rớt mount nào.
-- `config/database.ts` — Sequelize + PostgreSQL connection (syncs with `alter: true`)
+- `server.ts` — Express entry point; mounts `/api/auth`, `/api/accounts`, `/api/stores`, `/api/reports`, `/api/inventory`, `/api/invoices`, `/api/customers`, `/api/loyalty-points`, `/api/products`, `/api/categories`, `/api/promotions`, `/api/purchase-orders`, `/api/suppliers`, `/api/stock-transfers`, `/api/ai`. **Lưu ý lịch sử:** mount `/api/loyalty-points` đã từng bị rớt khi merge PR Bán-hàng + main do conflict trên `server.ts` (controller/routes file vẫn tồn tại nhưng không reachable) — đã fix lại; khi resolve conflict trên file này trong tương lai, kiểm tra kỹ không làm rớt mount nào.
+- `config/database.ts` — Sequelize + PostgreSQL connection (syncs with `alter: true`); SSL bật có điều kiện dựa vào `DATABASE_URL` chứa `render.com` hay không — xem chi tiết ở mục "Database Schema"
 - `types/express.d.ts` — Declaration merging for `req.user` on Express Request; `ts-node` requires `"files": true` in `tsconfig.json` to pick this up
 
 **Models implemented (`models/`):**
 | Model file | Table | Notes |
 |---|---|---|
-| `user.model.ts` | `users` | role ENUM, bcrypt passwordHash, isActive |
+| `user.model.ts` | `users` | role ENUM (`Manager`\|`Staff`\|`WarehouseStaff`\|`BranchManager`), bcrypt passwordHash, isActive |
 | `store.model.ts` | `stores` | isActive for soft delete |
 | `category.model.ts` | `categories` | FK target for products |
 | `product.model.ts` | `products` | sku UNIQUE, no quantity column — stock in inventory |
@@ -86,6 +93,8 @@ Layered architecture:
 - `purchase-order.controller.ts` — `createPurchaseOrder` (Manager), `getPurchaseOrders` (Manager + WarehouseStaff, store-scoped cho WarehouseStaff), `getPurchaseOrderById`, `confirmReceipt` (WarehouseStaff, gọi `InventoryService.updateInventory(storeId, productId, receivedQuantity, 'increase')` — đã verify đúng signature, đúng dùng `receivedQuantity` thực nhận không phải `quantity` đặt ban đầu), `cancelPurchaseOrder` (Manager, chỉ huỷ được khi `status='pending'`)
 - `supplier.controller.ts` — `getSuppliers` (mọi role đã login), `createSupplier` (Manager); **không theo convention chuẩn** — thiếu `return;` sau mỗi `res.json()`/`res.status()`, dùng `catch (error) { console.error(...) }` thay vì `catch {}` không bind (xem Known issues #10)
 - `stock-transfer.controller.ts` — `getTransfers` (mọi role đã login, filter tùy chọn `status`/`storeId` khớp `fromStoreId` HOẶC `toStoreId`), `createTransfer` (Manager), `confirmTransfer` (WarehouseStaff) — dùng `catch (err) { if (err instanceof StockTransferServiceError) {...} }`, theo đúng pattern custom-error-class đã ghi nhận tốt ở `purchase-order.controller.ts`
+- `report.controller.ts` — `getRevenueReport` (`GET /api/reports/revenue`; hỗ trợ `mode=month|quarter|year` (kèm `month`/`quarter`+`year`) hoặc mặc định `startDate`/`endDate`; validate `startDate <= endDate`), `getInventoryReport` (`GET /api/reports/inventory?storeId=`, `storeId` optional = toàn hệ thống); cả 2 chỉ gọi `ReportService` (`services/report.service.ts`), không viết query riêng; Manager-only qua `roleMiddleware(['Manager'])`
+- `ai.controller.ts` — `chat` (`POST /api/ai/chat`, Manager + BranchManager): nhận `{ message: string }`, chạy vòng lặp Gemini function-calling (tối đa 5 round) qua SDK `@google/genai`; tool declarations + executor nằm ở `services/ai-tools.service.ts`; tự fallback sang model `gemini-flash-lite-latest` (đúng 1 lần/request, không lặp) nếu model chính `gemini-flash-latest` ném `ApiError` với `status === 429` (quota/rate-limit thật của Gemini API — xem type `ApiError` trong `@google/genai`); system prompt tự chèn ngày hiện tại (để tính đúng "tháng này"/"quý này"/"năm nay") + đoạn ép buộc riêng cho BranchManager: phải mô tả số liệu đúng là của riêng chi nhánh họ (không nói "toàn hệ thống") dù bị yêu cầu "bỏ qua giới hạn"; trả `{ reply: string }`
 
 > **Note:** unlike `OrderService`/`InventoryService`, there is no separate `ProductService`/`CategoryService`/`PromotionService` on the backend — `product.controller.ts`/`category.controller.ts`/`promotion.controller.ts` call the Sequelize models directly. This is inconsistent with the layered-service pattern documented above; flagged for future cleanup, not blocking.
 
@@ -109,6 +118,8 @@ Layered architecture:
 - `purchase-order.routes.ts` → `GET /api/purchase-orders` (Manager + WarehouseStaff), `GET /api/purchase-orders/:id` (Manager + WarehouseStaff), `POST /api/purchase-orders` (**Manager only**), `PUT /api/purchase-orders/:id/confirm` (**WarehouseStaff only**), `PUT /api/purchase-orders/:id/cancel` (**Manager only**) — phân quyền tách theo từng hành động, đã verify đúng Schema.md mục 7 (khác SP-KM toàn bộ Manager-only)
 - `supplier.routes.ts` → `GET /api/suppliers` (auth only), `POST /api/suppliers` (Manager)
 - `stock-transfer.routes.ts` → `GET /api/stock-transfers` (auth only, mọi role), `POST /api/stock-transfers` (**Manager only** — khởi tạo phiếu), `PUT /api/stock-transfers/:id/confirm` (**WarehouseStaff only** — xác nhận nhận hàng tại `toStoreId`)
+- `report.routes.ts` → `GET /api/reports/revenue`, `GET /api/reports/inventory` (cả 2 Manager-only)
+- `ai.routes.ts` → `POST /api/ai/chat` (auth + `roleMiddleware(['Manager','BranchManager'])`)
 
 **Services implemented (`services/`):**
 - `InventoryService.ts` — `updateInventory(storeId, productId, quantity, mode)`, `checkLowStock(storeId?)`, `getStockByStore(storeId)`, `checkStock(...)`
@@ -116,6 +127,8 @@ Layered architecture:
 - `LoyaltyPointService.ts` — `addPoints`, `redeemPoints` (returns `false` without mutating if balance insufficient), `getBalance` — đã có HTTP surface qua `loyaltyPointRoutes.ts`/`loyaltyPoint.controller.ts`
 - `PurchaseOrderService.ts` — `createPurchaseOrder` (transaction: tạo order + bulk-create details, `totalCost` tính từ `items`), `getPurchaseOrders` (filter `storeId`/`status`/`startDate`/`endDate`; **tham số `search` được nhận nhưng không dùng để filter gì cả** — xem Known issues #8), `getPurchaseOrderById`, `confirmReceipt` (transaction: update từng `receivedQuantity` + gọi `InventoryService.updateInventory(..., 'increase')` dùng chung, không viết riêng), `cancelOrder` (chỉ huỷ khi `status='pending'`)
 - `StockTransferService.ts` — `createTransfer` (validate `fromStoreId !== toStoreId` và `quantity > 0`, ném `StockTransferServiceError`), `confirmTransfer` (atomic qua 1 `sequelize.transaction`: `InventoryService.updateInventory(fromStoreId, productId, quantity, 'decrease', t)` rồi `(toStoreId, ..., 'increase', t)` rồi update `status='completed'` — nếu bước nào fail thì cả transaction rollback, không cần rollback tay)
+- `report.service.ts` (default export `ReportService`) — `getRevenueReport(startDate, endDate, storeId?)` (trả `totalRevenue`/`totalOrders`/`dailyRevenue`/`topProducts` top-5), `getMonthlyBreakdown(year, startMonth, endMonth, storeId?)` (private, dùng chung cho 3 hàm dưới), `getMonthRevenue`/`getQuarterRevenue`/`getYearRevenue(..., storeId?)`, `getInventoryReport(storeId?)` (join Product+Store, tính `totalStockValue`/`lowStockCount`); đây là service duy nhất `ai-tools.service.ts` tái sử dụng cho tool `get_revenue_report`/`get_inventory_by_store` — không viết query mới cho AI
+- `ai-tools.service.ts` — không phải service nghiệp vụ mới; chỉ khai báo 3 `FunctionDeclaration` cho Gemini (`get_revenue_report`, `get_low_stock_products`, `get_inventory_by_store`) và `executeTool(name, args, caller)` gọi lại đúng `ReportService`/`InventoryService` (`Inventory.service.ts`, không phải `InventoryService.ts` — 2 file khác nhau, xem bảng Services) đã có sẵn; `resolveStoreId(caller, requested)` LUÔN ép `storeId = caller.storeId` khi `caller.role === 'BranchManager'` (bỏ qua `requested` dù AI truyền gì), cho Manager dùng `requested` hoặc để trống = toàn hệ thống
 
 **Fixed (trước đây là "Known gap"):** `OrderService.applyPromotion`/`addItem`/`removeItem` — guard discount đã được thêm vào `recalculateSubtotal` (xem trên). Frontend (`SalesManagement.tsx`) vẫn giữ client-side mitigation riêng (clear local discount khi sửa cart) — không còn bắt buộc về mặt đúng-sai dữ liệu vì backend đã tự bảo vệ, nhưng giữ lại để UX phản hồi tức thì không cần round-trip.
 
@@ -146,6 +159,8 @@ All application state lives in `App.tsx` via React hooks — no Redux or Context
 - `data.ts` — Mock data; `initialProducts` đã đổi thành `[]` sau khi audit (commit 2612017, SP-KM). `initialInvoices`/`initialStores` còn mock data nhưng không còn component active nào đọc.
 - `components/` — One file per business domain
 
+**`frontend/src/config/api.ts`** — export `API_BASE`, đọc `import.meta.env.VITE_API_URL`, fallback `'http://localhost:5000/api'` nếu chưa set (không set thì `npm run dev` local chạy y hệt trước đây, không bị ảnh hưởng). **Chuẩn deploy chính thức** kể từ khi chuẩn bị Render+Vercel: 15 file trước đây hardcode literal `'http://localhost:5000/api'` (`App.tsx`, `AccountManagement.tsx`, `DashboardOverview.tsx`, `OrderHistory.tsx`, `RevenueReport.tsx`, `SalesManagement.tsx`, `StockTransferManagement.tsx`, và 8 file `services/category|customer|product|promotion|store|stock-transfer.service.ts` + `inventoryApi.ts` + `reportApi.ts`) đã đổi sang import `API_BASE` từ file này. Deploy production: set biến môi trường `VITE_API_URL` trên Vercel **trước khi build** (Vite inline biến env lúc build, không đọc runtime). Riêng `WarehouseManagement.tsx` tự đọc `VITE_API_URL` theo cách khác từ trước (`const API = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:5000'` — fallback KHÔNG có `/api`, tự thêm `/api/...` ở từng call site) — chưa đồng bộ về dùng chung `API_BASE`, không phải lỗi nhưng khác convention nên cần biết khi sửa file này.
+
 **Frontend API service layer (`services/`)** — convention mới, áp dụng cho code Sản phẩm/Danh mục/Khuyến mãi trở đi:
 - `product.service.ts`, `category.service.ts`, `promotion.service.ts`, `customer.service.ts`, `stock-transfer.service.ts`, `store.service.ts` — dùng `axios` (không phải `fetch()` thô như `AccountManagement.tsx`/`SalesManagement.tsx`), mỗi service file export các hàm gọi API tương ứng 1 resource, tự đính `Authorization` header từ `localStorage.getItem('token')`.
 - `inventoryApi.ts`, `reportApi.ts` — dùng `fetch()` thô (không phải axios); được dùng bởi `WarehouseManagement.tsx` và `DashboardOverview.tsx`/`RevenueReport.tsx` tương ứng.
@@ -164,37 +179,46 @@ All application state lives in `App.tsx` via React hooks — no Redux or Context
 - `WarehouseManagement.tsx` — tab **Tồn kho** dùng `inventoryApi.fetchStockByStore` → `GET /api/inventory`; tab **Đơn nhập hàng** dùng `GET /api/purchase-orders`, `POST /api/purchase-orders`, `PUT /api/purchase-orders/:id/confirm`, `PUT /api/purchase-orders/:id/cancel` — tất cả qua real API. Tab "Điều chuyển hàng" (mock cũ ~400 dòng) đã bị xóa khỏi component này sau khi `StockTransferManagement.tsx` ra đời.
 - `StoreManagement.tsx` — full CRUD qua `services/store.service.ts` → `GET/POST/PUT /api/stores`, `PATCH /api/stores/:id/deactivate`.
 - `RevenueReport.tsx` — dùng hai hooks `useRevenueReport`/`useInventoryReport` gọi `reportApi.fetchRevenueReport`/`fetchInventoryReport`; props mock cũ đã bỏ.
-- `DashboardOverview.tsx` — đã wire API thật hoàn toàn: `fetchLowStock()` → low-stock list; `getStores()` → storesCount; `fetchRevenueReport()` (gọi 4 lần: today/yesterday/week/month) → revenue cards + SVG line chart; `fetch('http://localhost:5000/api/invoices')` → bảng "Đơn hàng gần đây" (filter `status==='completed'` + `.slice(0,5)` client-side). **Note:** lời gọi `/api/invoices` dùng hardcoded `http://localhost:5000` thay vì `API_BASE` constant — inconsistency nhỏ so với `reportApi.ts`.
+- `DashboardOverview.tsx` — đã wire API thật hoàn toàn: `fetchLowStock()` → low-stock list; `getStores()` → storesCount; `fetchRevenueReport()` (gọi 4 lần: today/yesterday/week/month) → revenue cards + SVG line chart; `fetch(\`${API_BASE}/invoices\`)` → bảng "Đơn hàng gần đây" (filter `status==='completed'` + `.slice(0,5)` client-side). **Đã fix (chuẩn bị deploy):** trước đây dùng hardcoded `http://localhost:5000/api/invoices`, giờ dùng `API_BASE` từ `config/api.ts` — không còn inconsistency với `reportApi.ts`.
+- `AiAssistantWidget.tsx` — khung chat AI nổi góc phải dưới màn hình; chỉ render khi `userRole` (prop, chuỗi tiếng Việt từ `App.tsx`) là `'Quản lý'` hoặc `'Quản lý chi nhánh'` — so khớp đúng cách `App.tsx` đang phân role, không dùng `AuthUser.role` enum tiếng Anh; gọi `POST ${API_BASE}/ai/chat` với `{ message }`, hiển thị `data.reply`; gắn vào `App.tsx` ngay trước thẻ `</div>` gốc (ngoài mọi khối điều kiện login/tab) nên hiện được ở mọi tab sau khi đăng nhập, không phụ thuộc `activeTab`.
 
 **Components still using mock data (not yet migrated):**
 - (Không còn — tất cả component đã wire API thật.)
 
 ### Login credentials
-Real (seeded in DB — use these when backend is running):
-- Manager: `manager@test.com` / `password123`
+Real (seeded in DB via `npm run seed` — mật khẩu mặc định tất cả tài khoản: `password123`; đã verify thật qua login API trong phiên test AI assistant):
+- Manager: `manager@test.com`
+- Staff (1/chi nhánh): `staff.q1@test.com`, `staff.q7@test.com`, `staff.bt@test.com`
+- WarehouseStaff (1/chi nhánh): `warehouse.q1@test.com`, `warehouse.q7@test.com`, `warehouse.bt@test.com`
+- BranchManager (1/chi nhánh, xem mục BranchManager ở trên): `branchmanager.q1@test.com`, `branchmanager.q7@test.com`, `branchmanager.bt@test.com`
 
-Mock-only (frontend only, no backend account exists):
-- Sales Staff: `staff@retailchain.vn` / `123456`
-- Warehouse Staff: `warehouse@retailchain.vn` / `123456`
+Form đăng nhập (`App.tsx`) chỉ có nút quick-fill demo cho Manager (`manager@test.com`) trong panel "Cổng thử nghiệm vai trò" — các role khác phải gõ tay email/password ở trên.
 
 ### Seeded data (after `npm run seed`)
-- 1 Manager user (`manager@test.com`)
+Seed đã được mở rộng nhiều so với version đầu — số liệu dưới đây verify trực tiếp từ output thật của `npm run seed` (không phải suy đoán):
+- 10 users: 1 Manager + 3 Staff + 3 WarehouseStaff + 3 BranchManager (1 mỗi chi nhánh cho 3 role sau)
 - 3 stores: Chi nhánh Quận 1, Quận 7, Bình Thạnh
-- 1 category: Đồ uống
-- 3 products: SP001 Coca Cola, SP002 Bánh mì sandwich, SP003 Nước suối Lavie
-- Inventory: 100 units of each product at Chi nhánh Quận 1
-- 1 customer: Lê Thị Khách (0909999999)
+- 4 categories: Đồ uống, Bánh kẹo, Đồ ăn vặt, Sữa & Sản phẩm từ sữa
+- 15 products: SP0001–SP0015 (Coca Cola, Pepsi, Lavie, trà xanh, cà phê lon, bánh mì, bánh quy, kẹo dẻo, snack, mì tôm, sữa tươi, sữa chua uống, phô mai que, nước tăng lực, bánh gạo lứt)
+- Inventory: cả 15 sản phẩm ở cả 3 chi nhánh (số lượng ngẫu nhiên mỗi lần seed)
+- 10 customers với loyalty points + hạng (Đồng/Bạc/Vàng/Kim cương)
+- 3 suppliers
+- 7 purchase orders trải theo status pending/completed/cancelled, từ "day-6" tới "day-0" (tính từ lúc chạy seed)
+- 4 stock transfers (status pending/completed)
+- 4 promotions (gồm 1 khuyến mãi Tết đã hết hạn, dùng để test `Promotion.isValid()`)
+- 325 invoices trải từ day-6 tới day-0, kèm doanh thu mục tiêu/thực tế in ra console — dùng để test báo cáo doanh thu theo ngày/tháng/quý/năm
 
 ## Database Schema
 
 Full schema with design rationale is in `Schema.md`. Key decisions:
 
 - **UUID string primary keys** throughout all tables
-- **Single `users` table** with `role` enum (`Manager` | `Staff` | `WarehouseStaff`) — no inheritance tables
+- **Single `users` table** with `role` enum (`Manager` | `Staff` | `WarehouseStaff` | `BranchManager`) — no inheritance tables
 - **`isActive` boolean** for soft deletes on users, products, stores, promotions
 - **`Inventory` model** has an `adjustQuantity(delta)` instance method; a shared `InventoryService.updateInventory(storeId, productId, quantity, mode)` is the intended entry point for all stock changes — do NOT create per-module variants
 - **Payment info** is embedded in `invoices` (no separate Payment table)
 - **`loyalty_points`** is a one-to-one extension of `customers`
+- **`backend/src/config/database.ts`** bật SSL có điều kiện: `useSSL = DATABASE_URL?.includes('render.com')`; khi `true` thêm `dialectOptions: { ssl: { require: true, rejectUnauthorized: false } }`, khi `false` giữ nguyên config gốc (không có field `ssl`) — để Postgres local (không SSL) và Postgres trên Render (bắt buộc SSL) cùng chạy được từ cùng 1 codebase, tùy `DATABASE_URL` trong `.env`
 
 14 tables: `users`, `stores`, `categories`, `products`, `inventory`, `suppliers`, `purchase_orders`, `purchase_order_details`, `stock_transfers`, `customers`, `loyalty_points`, `promotions`, `invoices`, `invoice_details`
 
@@ -245,8 +269,13 @@ git push origin Auth   # only when user says to push
 - ~~Missing model `stock_transfers`~~ — đã xong model/service/controller/route/frontend
 - ~~`PUT /api/customers/:id`~~ — đã xong: `updateCustomer` controller + route `PUT /api/customers/:id` với `roleMiddleware(['Staff','Manager'])`
 
+**Backend — BranchManager & AI assistant (mới):**
+1. Nghiệp vụ thật cho BranchManager (schema/JWT/seed đã có, UI vẫn placeholder) — chưa rõ scope cụ thể sẽ làm gì khác Manager ngoài "xem trong phạm vi chi nhánh mình".
+2. `AccountManagement.tsx` chưa cho tạo tài khoản `BranchManager` qua UI (dropdown role chỉ có Staff/WarehouseStaff/Manager) — hiện chỉ tạo được qua `npm run seed`.
+3. Model `gemini-flash-latest` dùng cho `ai.controller.ts` có quota free-tier giới hạn (20 request/ngày khi test) — đã có fallback tự động sang `gemini-flash-lite-latest` khi gặp lỗi 429, nhưng nếu dùng nhiều cho demo/bảo vệ đồ án nên cân nhắc nâng cấp key trả phí hoặc đổi hẳn sang model lite.
+
 **Frontend — còn cần làm (minor):**
-- `DashboardOverview`: đổi hardcoded `http://localhost:5000/api/invoices` sang dùng `API_BASE` constant như `reportApi.ts` (không ảnh hưởng chức năng, chỉ là inconsistency).
+- `WarehouseManagement.tsx`: đọc `VITE_API_URL` theo cách riêng (fallback không có `/api`, tự thêm `/api/...` mỗi call site) — chưa đồng bộ về dùng chung `API_BASE` từ `config/api.ts` như 15 file khác. Không phải lỗi, chỉ là inconsistency nhỏ.
 - `CustomerManagement.tsx`: form tạo/sửa chưa expose field `address` dù backend đã nhận (minor UX gap).
 
 **Frontend — đã xong (không còn pending):**
@@ -254,6 +283,9 @@ git push origin Auth   # only when user says to push
 - ~~`StoreManagement`~~ — đã wire qua `services/store.service.ts`
 - ~~`RevenueReport`~~ — đã wire qua `reportApi.ts` hooks
 - ~~`PromotionManagement` nút Sửa~~ — đã kích hoạt sau khi có `updatePromotion`
-- ~~`DashboardOverview` storesCount + bảng "Đơn hàng gần đây"~~ — đã wire API thật: `getStores()` + `fetch('/api/invoices')` gộp vào `Promise.all`
+- ~~`DashboardOverview` storesCount + bảng "Đơn hàng gần đây"~~ — đã wire API thật: `getStores()` + `fetch(\`${API_BASE}/invoices\`)` gộp vào `Promise.all`
 - ~~`DashboardOverview` revenue chart + cards~~ — **đã xong (SP-KM)**: `fetchRevenueReport` wire 4 lần (today/yesterday/week/month), path `/api/reports/revenue` đã đúng
 - ~~`CustomerManagement.tsx` nút Sửa~~ — đã kích hoạt sau khi có `PUT /api/customers/:id`
+- ~~`DashboardOverview` hardcode `http://localhost:5000`~~ — đã đổi sang `API_BASE` từ `config/api.ts`
+- ~~Centralize API base URL cho deploy~~ — 15 file đã đổi sang `config/api.ts` (xem mục "Frontend API service layer")
+- ~~Trợ lý AI (Gemini)~~ — đã có `AiAssistantWidget.tsx` + `POST /api/ai/chat`, wire vào `App.tsx`, chỉ hiện cho Manager/BranchManager

@@ -29,6 +29,7 @@ import {
   Shield
 } from 'lucide-react';
 import { API_BASE } from './config/api';
+import AiAssistantWidget from './components/AiAssistantWidget';
 
 import { Product, Category, AuthUser, Customer, Invoice, Promotion, Store, PurchaseOrder } from './types';
 import { roleLabels, defaultTabByRole } from './utils/roleMapping';
@@ -847,6 +848,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <AiAssistantWidget userRole={userRole} />
 
     </div>
   );
