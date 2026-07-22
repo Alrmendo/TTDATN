@@ -3,9 +3,17 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-export const sequelize = new Sequelize(process.env.DATABASE_URL as string, {
+const databaseUrl = process.env.DATABASE_URL as string;
+const useSSL = databaseUrl?.includes('render.com');
+
+export const sequelize = new Sequelize(databaseUrl, {
   dialect: 'postgres',
-  logging: false, 
+  logging: false,
+  ...(useSSL && {
+    dialectOptions: {
+      ssl: { require: true, rejectUnauthorized: false },
+    },
+  }),
 });
 
 export const connectDB = async () => {
