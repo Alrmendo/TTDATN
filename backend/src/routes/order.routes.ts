@@ -4,6 +4,7 @@ import {
   addItem,
   removeItem,
   applyPromotion,
+  applyBestPromotion,
   confirmPayment,
   getInvoices,
 } from '../controllers/order.controller';
@@ -18,5 +19,6 @@ router.delete('/:id/items/:productId', authMiddleware, roleMiddleware(['Staff'])
 router.post('/:id/promotion', authMiddleware, roleMiddleware(['Staff']), applyPromotion);
 router.post('/:id/confirm-payment', authMiddleware, roleMiddleware(['Staff']), confirmPayment);
 router.get('/', authMiddleware, roleMiddleware(['Staff', 'Manager']), getInvoices);
+router.post('/:id/promotion/auto', authMiddleware, roleMiddleware(['Staff']), applyBestPromotion);
 
 export default router;

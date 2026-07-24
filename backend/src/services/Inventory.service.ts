@@ -1,13 +1,9 @@
 import { Op, Sequelize } from 'sequelize';
 import { Inventory, Product, Store, Category } from '../models';
 
-// Inventory.belongsTo(Product/Store) are defined with no `as:` alias in
-// models/index.ts, so Sequelize's default include accessor is the model name
-// as exported (PascalCase: `Product`, `Store`). Product.belongsTo(Category),
-// however, IS defined with `as: 'category'` — any nested include of Category
-// through Product must specify `as: 'category'` or Sequelize throws.
-
-export type AdjustMode = 'increase' | 'decrease';
+// Product.belongsTo(Category, { as: 'category' }) in models/index.ts
+// → eager-load accessor is `product.category` (lowercase alias).
+// Inventory.belongsTo(Product/Store) have no alias → PascalCase accessor.
 
 export class InventoryError extends Error {
   status: number;
@@ -17,24 +13,18 @@ export class InventoryError extends Error {
   }
 }
 
-// Sequelize association aliases vary by project (default model name vs custom `as:`).
-// These helpers read either shape so the DTOs below don't break if your models/index.ts
-// uses a different alias than assumed here.
-const getProductJoin = (rec: any) => rec.Product ?? rec.product ?? null;
-const getStoreJoin = (rec: any) => rec.Store ?? rec.store ?? null;
-
 const toStockDTO = (rec: any) => {
-  const product = getProductJoin(rec);
-  const category = product?.Category ?? product?.category ?? null;
+  const product = rec.Product ?? rec.product ?? null;
+  const category = product?.category ?? product?.Category ?? null;
   return {
     id: rec.id,
     storeId: rec.storeId,
     productId: rec.productId,
     productName: product?.productName ?? null,
     sku: product?.sku ?? null,
-    categoryName: category?.categoryName ?? null,
-    price: product?.price ?? null,
-    costPrice: product?.costPrice ?? null,
+    categoryName: category?.categoryName ?? null,   // real field name is categoryName
+    price: product?.price != null ? Number(product.price) : null,
+    costPrice: product?.costPrice != null ? Number(product.costPrice) : null,
     isActive: product?.isActive ?? null,
     quantity: rec.quantity,
     lowStockThreshold: rec.lowStockThreshold,
@@ -43,8 +33,8 @@ const toStockDTO = (rec: any) => {
 };
 
 const toLowStockDTO = (rec: any) => {
-  const product = getProductJoin(rec);
-  const store = getStoreJoin(rec);
+  const product = rec.Product ?? rec.product ?? null;
+  const store   = rec.Store   ?? rec.store   ?? null;
   return {
     id: rec.id,
     storeId: rec.storeId,
@@ -57,31 +47,36 @@ const toLowStockDTO = (rec: any) => {
   };
 };
 
-/**
- * InventoryService — theo đúng method signature đã chốt trong Schema.md mục 5
- * và bảng "Method signatures dùng chung — BẮT BUỘC tuân theo" ở cuối Schema.md.
- *
- * CHỈ updateInventory() là method được phép thay đổi quantity ở service layer
- * (nó gọi model-layer Inventory.adjustQuantity(delta)). KHÔNG thêm biến thể
- * signature khác (vd. setQuantity, adjustStock ở layer này) — màn hình "Cập nhật
- * tồn kho thực tế" trong WarehouseManagement vẫn phải đi qua updateInventory(),
- * controller chỉ chịu trách nhiệm tính delta trước khi gọi (xem inventoryController).
- */
-const InventoryService = {
-  async updateInventory(
+export class InventoryService {
+  /**
+   * Kiểm tra tồn kho — throw InventoryError nếu không đủ.
+   * Dùng trong SD-04 addItem (bước 9 alt flow 9a).
+   */
+  static async checkStock(storeId: string, productId: string, qty: number): Promise<void> {
+    const record = await Inventory.findOne({ where: { storeId, productId } });
+    const current = record ? (record as any).quantity : 0;
+    if (current < qty) {
+      throw new InventoryError(
+        `Tồn kho không đủ (hiện có ${current}, yêu cầu ${qty})`
+      );
+    }
+  }
+
+  /**
+   * Cập nhật tồn kho — entry point DÙNG CHUNG cho mọi module (Schema.md §5).
+   * mode 'increase': nhập hàng / điều chuyển đến
+   * mode 'decrease': bán hàng / điều chuyển đi
+   */
+  static async updateInventory(
     storeId: string,
     productId: string,
     quantity: number,
-    mode: AdjustMode
+    mode: 'increase' | 'decrease'
   ) {
     if (!Number.isInteger(quantity) || quantity <= 0) {
       throw new InventoryError('Số lượng phải là số nguyên dương');
     }
-    if (mode !== 'increase' && mode !== 'decrease') {
-      throw new InventoryError("mode phải là 'increase' hoặc 'decrease'");
-    }
 
-    // Tìm bản ghi inventory theo (storeId, productId); nếu chưa có thì tạo mới với quantity = 0
     let record = await Inventory.findOne({ where: { storeId, productId } });
     if (!record) {
       record = await Inventory.create({ storeId, productId, quantity: 0 } as any);
@@ -89,7 +84,6 @@ const InventoryService = {
 
     const delta = mode === 'increase' ? quantity : -quantity;
 
-    // Inventory.adjustQuantity(delta) tự throw "Tồn kho không đủ" nếu kết quả < 0
     try {
       await (record as any).adjustQuantity(delta);
     } catch (err) {
@@ -104,58 +98,53 @@ const InventoryService = {
       lowStockThreshold: (record as any).lowStockThreshold,
       lastUpdated: (record as any).lastUpdated,
     };
-  },
+  }
 
   /**
-   * Đọc 1 bản ghi inventory theo (storeId, productId) — KHÔNG ghi/thay đổi dữ liệu.
-   * Dùng để controller tính delta trước khi gọi updateInventory() ở trên
-   * (vd. màn "Cập nhật tồn kho thực tế" nhập số tuyệt đối, không phải số lệch).
+   * Đọc bản ghi inventory theo (storeId, productId) — KHÔNG ghi.
+   * Controller dùng để tính delta trước khi gọi updateInventory().
    */
-  async getInventoryRecord(storeId: string, productId: string) {
+  static async getInventoryRecord(storeId: string, productId: string) {
     const record = await Inventory.findOne({ where: { storeId, productId } });
     return record ? toStockDTO(record) : null;
-  },
+  }
 
   /**
-   * Lấy toàn bộ tồn kho của 1 chi nhánh — dùng cho màn hình "Quản lý kho".
+   * Lấy toàn bộ tồn kho của 1 chi nhánh — dùng cho màn Quản lý kho.
    */
-  async getStockByStore(storeId: string) {
+  static async getStockByStore(storeId: string) {
     const records = await Inventory.findAll({
       where: { storeId },
       include: [
         {
           model: Product,
           attributes: ['id', 'productName', 'sku', 'price', 'costPrice', 'isActive'],
-          include: [{ model: Category, as: 'category', attributes: ['id', 'categoryName'] }],
+          include: [{ model: Category, attributes: ['id', 'categoryName'] }],
         },
       ],
       order: [['lastUpdated', 'DESC']],
     });
     return records.map(toStockDTO);
-  },
+  }
 
   /**
-   * Trả về các bản ghi inventory có quantity < lowStockThreshold.
-   * storeId là optional — không truyền thì quét toàn hệ thống (dùng cho dashboard Manager).
+   * Sản phẩm sắp hết (quantity < lowStockThreshold).
+   * storeId optional — bỏ trống để quét toàn hệ thống (Manager dashboard).
    */
-  async checkLowStock(storeId?: string) {
+  static async checkLowStock(storeId?: string) {
     const conditions: any[] = [
       Sequelize.where(Sequelize.col('quantity'), Op.lt, Sequelize.col('lowStockThreshold')),
     ];
-    if (storeId) {
-      conditions.push({ storeId });
-    }
+    if (storeId) conditions.push({ storeId });
 
     const records = await Inventory.findAll({
       where: { [Op.and]: conditions },
       include: [
         { model: Product, attributes: ['id', 'productName', 'sku'] },
-        { model: Store, attributes: ['id', 'storeName'] },
+        { model: Store,   attributes: ['id', 'storeName'] },
       ],
       order: [['quantity', 'ASC']],
     });
     return records.map(toLowStockDTO);
-  },
-};
-
-export default InventoryService;
+  }
+}

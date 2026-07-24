@@ -1,6 +1,6 @@
 import type { FunctionDeclaration } from '@google/genai';
 import ReportService from './report.service';
-import InventoryService from './Inventory.service';
+import { InventoryService } from './Inventory.service';
 
 // 3 tool khai báo cho Gemini function-calling — KHÔNG viết logic query mới,
 // executeTool() dưới đây chỉ gọi lại đúng ReportService/InventoryService thật

@@ -61,6 +61,53 @@ export const applyPromotion = async (req: Request, res: Response): Promise<void>
   }
 };
 
+export const applyBestPromotion = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const invoiceId = req.params.id;
+
+    const bestPromoId = await OrderService.selectBestPromotion(invoiceId as string);
+
+    if (!bestPromoId) {
+      const invoice = await Invoice.findByPk(invoiceId as string);
+
+      if (!invoice) {
+        res.status(404).json({ message: 'Hóa đơn không tồn tại' });
+        return;
+      }
+
+      res.json({
+        discountAmount: 0,
+        totalAmount: Number((invoice as any).subtotal),
+        promotionName: null,
+      });
+      return;
+    }
+
+    const invoice = await OrderService.applyPromotion(
+      invoiceId as string,
+      bestPromoId
+    );
+
+    const promo = await Promotion.findByPk(bestPromoId, {
+      attributes: ['name'],
+      raw: true,
+    });
+
+    res.json({
+      discountAmount: Number((invoice as any).discountAmount),
+      totalAmount: Number((invoice as any).totalAmount),
+      promotionName: (promo as any)?.name ?? null,
+    });
+  } catch (err) {
+    res.status(400).json({
+      message: err instanceof Error ? err.message : 'Unknown error',
+    });
+  }
+};
+
 export const confirmPayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const invoiceId = req.params.id as string;

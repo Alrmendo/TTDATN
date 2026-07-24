@@ -54,8 +54,8 @@ export default function SalesManagement({
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerMessage, setCustomerMessage] = useState('');
 
-  // Promotion
-  const [promotionId, setPromotionId] = useState('');
+  // Promotion — auto-applied by server, no manual input needed
+  const [appliedPromotionName, setAppliedPromotionName] = useState<string | null>(null);
   const [promotionResult, setPromotionResult] = useState('');
 
   // Payment
@@ -70,7 +70,6 @@ export default function SalesManagement({
 
   // Per-action submitting flags
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
-  const [isSubmittingPromotion, setIsSubmittingPromotion] = useState(false);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,7 +107,7 @@ export default function SalesManagement({
       setSelectedCustomer(null);
       setCustomerSearch('');
       setCustomerMessage('');
-      setPromotionId('');
+      setAppliedPromotionName(null);
       setPromotionResult('');
       setPaymentMethod('');
       setPaymentAmount('');
@@ -173,16 +172,51 @@ export default function SalesManagement({
     }
   };
 
-  // Cart contents changed — a previously applied promotion no longer reflects
-  // the current order, so clear it and require the user to re-apply manually.
-  const clearStalePromotion = (subtotal: number) => {
-    if (discountAmount > 0) {
-      setDiscountAmount(0);
-      setPromotionId('');
-      setPromotionResult('Giỏ hàng đã thay đổi — vui lòng áp dụng lại mã khuyến mãi');
-      setTotalAmount(subtotal);
-    } else {
-      setTotalAmount(subtotal);
+  // After every cart change (add/remove item), silently ask the server to pick
+  // the best promotion for the current subtotal. OrderService.selectBestPromotion
+  // runs the rule: eligible promos → compute real discount → pick the largest.
+  // No manual input from Staff required.
+  const autoApplyPromotion = async (invoiceId: string, newSubtotal: number) => {
+    // Clear any stale promotion immediately so totals are always consistent
+    setAppliedPromotionName(null);
+    setDiscountAmount(0);
+    setTotalAmount(newSubtotal);
+    setPromotionResult('');
+
+    if (newSubtotal <= 0) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/invoices/${invoiceId}/promotion/auto`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+
+      if (!res.ok) {
+        console.error('[autoApplyPromotion] server error:', res.status);
+        return; // silently ignore — totals already reset to subtotal above
+      }
+
+      // Guard against non-JSON responses (e.g. HTML 404 pages from misconfigured server)
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        console.error('[autoApplyPromotion] unexpected content-type:', contentType);
+        return;
+      }
+
+      const data = await res.json();
+
+      const discount = Number(data.discountAmount ?? 0);
+      const total    = Number(data.totalAmount    ?? newSubtotal);
+
+      if (discount > 0) {
+        setDiscountAmount(discount);
+        setTotalAmount(total);
+        setAppliedPromotionName(data.promotionName ?? null);
+        setPromotionResult(`Tự động áp dụng: giảm ${formatCurrency(discount)}`);
+      }
+      // If server found no valid promotion, totals remain at subtotal (already set above)
+    } catch (err) {
+      console.error('[autoApplyPromotion] network error:', err);
     }
   };
 
@@ -230,7 +264,7 @@ export default function SalesManagement({
 
         const subtotal = next.reduce((sum, d) => sum + Number(d.subtotal), 0);
         setInvoiceSubtotal(subtotal);
-        clearStalePromotion(subtotal);
+        autoApplyPromotion(currentInvoiceId, subtotal);
         return next;
       });
 
@@ -276,47 +310,13 @@ export default function SalesManagement({
         const next = prev.filter((d) => d.productId !== productId);
         const subtotal = next.reduce((sum, d) => sum + Number(d.subtotal), 0);
         setInvoiceSubtotal(subtotal);
-        clearStalePromotion(subtotal);
+        autoApplyPromotion(currentInvoiceId, subtotal);
         return next;
       });
     } catch {
       showToast('Không thể kết nối đến server');
     } finally {
       setIsSubmittingItem(false);
-    }
-  };
-
-  const handleApplyPromotion = async () => {
-    if (!currentInvoiceId || !promotionId.trim()) return;
-    setIsSubmittingPromotion(true);
-    setPromotionResult('');
-    try {
-      const res = await fetch(`${API_BASE}/invoices/${currentInvoiceId}/promotion`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ promotionId: promotionId.trim() }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setPromotionResult(data.message || 'Không áp dụng được');
-        return;
-      }
-
-      const updatedDiscount = Number(data.discountAmount);
-      const updatedTotal = Number(data.totalAmount);
-      setDiscountAmount(updatedDiscount);
-      setTotalAmount(updatedTotal);
-
-      if (updatedDiscount > 0) {
-        setPromotionResult(`Áp dụng thành công: giảm ${formatCurrency(updatedDiscount)}`);
-      } else {
-        setPromotionResult('Không áp dụng được');
-      }
-    } catch {
-      setPromotionResult('Không thể kết nối đến server');
-    } finally {
-      setIsSubmittingPromotion(false);
     }
   };
 
@@ -360,7 +360,7 @@ export default function SalesManagement({
           storeId: currentUser?.storeId ?? '',
           staffId: currentUser?.id ?? '',
           customerId: selectedCustomer?.id ?? null,
-          promotionId: promotionId || null,
+          promotionId: null, // auto-applied by server; name shown as appliedPromotionName
           status: 'completed',
           subtotal: invoiceSubtotal,
           discountAmount,
@@ -646,45 +646,34 @@ export default function SalesManagement({
             )}
           </div>
 
-          {/* Promotion */}
-          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs space-y-4">
+          {/* Promotion — auto-applied, no manual input */}
+          <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-xs space-y-3">
             <div className="flex items-center space-x-2">
               <Tag className="w-4 h-4 text-gray-400" />
-              <h3 className="text-xs font-bold text-gray-950 uppercase tracking-wider">Khuyến mãi & Vouchers</h3>
+              <h3 className="text-xs font-bold text-gray-950 uppercase tracking-wider">Khuyến mãi</h3>
             </div>
 
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                placeholder="Mã khuyến mãi (promotionId)..."
-                value={promotionId}
-                onChange={(e) => setPromotionId(e.target.value)}
-                className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-xs placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#3B82F6] focus:border-[#3B82F6] transition font-mono font-bold"
-              />
-              <button
-                type="button"
-                onClick={handleApplyPromotion}
-                disabled={isSubmittingPromotion || !promotionId.trim()}
-                className="px-3.5 py-2 bg-[#3B82F6] hover:bg-blue-600 text-white rounded-lg text-xs font-bold transition shrink-0 disabled:opacity-50"
-              >
-                {isSubmittingPromotion ? 'Đang áp...' : 'Áp dụng'}
-              </button>
-            </div>
-
-            {promotionResult && (
+            {promotionResult ? (
               <p
                 className={`text-[10px] font-bold p-2.5 rounded-md border flex items-center leading-relaxed ${
-                  promotionResult.includes('Không')
+                  promotionResult.includes('Không') || promotionResult.includes('lỗi')
                     ? 'text-rose-600 bg-rose-50 border-rose-100'
                     : 'text-emerald-700 bg-emerald-50 border-emerald-100'
                 }`}
               >
-                {promotionResult.includes('Không') ? (
+                {promotionResult.includes('Không') || promotionResult.includes('lỗi') ? (
                   <AlertCircle className="w-3.5 h-3.5 mr-1.5 text-rose-500 shrink-0" />
                 ) : (
                   <CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-emerald-600 shrink-0" />
                 )}
                 {promotionResult}
+                {appliedPromotionName && (
+                  <span className="ml-1 text-emerald-600 font-black">({appliedPromotionName})</span>
+                )}
+              </p>
+            ) : (
+              <p className="text-[11px] text-gray-400 italic">
+                Hệ thống tự động tìm và áp dụng khuyến mãi tốt nhất khi thêm sản phẩm vào giỏ.
               </p>
             )}
           </div>
