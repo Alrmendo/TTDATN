@@ -246,9 +246,14 @@ export class PurchaseOrderService {
         0
       );
 
+      // Nếu không có gì để nợ (vd toàn bộ dòng receivedQuantity=0), bỏ qua bước
+      // 'debt' — recordPayment() yêu cầu amount > 0 nên đơn nợ 0 đồng sẽ không
+      // bao giờ tới được 'completed' nếu vẫn set 'debt' ở đây.
+      const status = totalCost <= 0 ? 'completed' : 'debt';
+
       await order.update(
         {
-          status: 'debt',
+          status,
           totalCost,
           confirmedBy,
           confirmedAt: new Date(),
