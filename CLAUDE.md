@@ -134,15 +134,15 @@ Layered architecture:
 
 **Known issues — tuần 2:**
 1. ~~**`PromotionService.updatePromotion` + `PUT` endpoint thật**~~ — **đã xong tuần 3**: `updatePromotion` controller + `PUT /api/promotions/:id` đã có, nút "Sửa" trên `PromotionManagement.tsx` đã được kích hoạt.
-2. **`createProduct` trả lỗi 500 chung khi trùng `sku`** (`product.controller.ts`) — không bắt riêng lỗi UNIQUE constraint để trả `409` như pattern đã có ở `customer.controller.ts` (createCustomer trả 409 khi trùng phone).
-3. **SKU sinh phía client dễ trùng** (`ProductManagement.tsx handleCreate`: `SP0${products.length+1}`) — dựa vào số lượng sản phẩm đang hiển thị (có thể đã filter/search), nên dễ va với SKU đã tồn tại → rơi vào bug #2 trên, lỗi 500 không rõ nguyên nhân cho người dùng. Nên đổi sang để backend tự sinh SKU hoặc validate trước khi submit.
+2. ~~**`createProduct` trả lỗi 500 chung khi trùng `sku`**~~ — **đã xong**: `createProduct` (`product.controller.ts`) không còn nhận `sku` từ request body — tự gọi `generateSku()` (query `Product` có `sku` lớn nhất, tăng dần `SP0001`, `SP0002`...) và bọc insert trong `try/catch` bắt riêng `UniqueConstraintError` để trả `409` kèm message rõ ràng, không rơi xuống `500` chung. **Sửa thêm trong lúc verify (tuần 5):** `generateSku()` trước đó dùng `ORDER BY sku DESC` không lọc — nếu bảng có SKU không đúng format (dữ liệu test cũ dạng `SP001`/`TEST-SKU-...` còn sót trong DB) thì có thể bị chọn nhầm làm "lớn nhất" theo alphabet (`'T' > 'S'`) và sinh ra SKU rác kiểu `SP0NaN`. Đã thêm `where: { sku: { [Op.regexp]: '^SP[0-9]{4}$' } }` để chỉ xét đúng SKU 4 chữ số trước khi `ORDER BY DESC`.
+3. ~~**SKU sinh phía client dễ trùng**~~ — **đã xong**: `ProductManagement.tsx handleCreate` không còn tự sinh `SP0${products.length+1}` — form chỉ gửi `productName`/`categoryId`/`price`/`costPrice`, SKU hoàn toàn do backend sinh (xem #2).
 4. **`category.controller.ts` dùng `catch (error) { console.error(error); ... }`** thay vì pattern `catch { }` không bind error đã thống nhất ở mục "TypeScript notes" (`product.controller.ts`/`promotion.controller.ts` đều tuân thủ đúng).
 5. **Dead prop `onAddPromotion`** trong `PromotionManagementProps` (`PromotionManagement.tsx`) — còn khai báo + destructure nhưng không gọi ở đâu (logic mới gọi `createPromotion` service trực tiếp). Nên dọn khi làm gap #1.
 6. ~~**Không có `roleMiddleware` trên `category.routes.ts`**~~ — **đã xử lý tuần 3**: category.routes.ts nay có đầy đủ `POST`/`PUT`/`DELETE` với `roleMiddleware(['Manager'])` theo đúng pattern.
 7. **Thiếu try/catch quanh các lời gọi service ở `App.tsx`** — `handleAddProduct`/`handleUpdateProduct`/`handleDeleteProduct` gọi `createProduct`/`updateProduct`/`deleteProduct` (từ `services/product.service.ts`) không có try/catch. Nếu backend trả lỗi (404, 409, 500...), promise reject không được bắt → unhandled rejection, không có thông báo nào cho người dùng. Khác với `PromotionManagement.tsx` đã có try/catch + `alert(...)` quanh `createPromotion`/`deactivatePromotion`. Cần chuẩn hóa xử lý lỗi khi đụng tới các hàm này lần sau.
-8. **`PurchaseOrderService.getPurchaseOrders` nhận `search` param nhưng không filter gì** — controller destructure và truyền `search` xuống service, nhưng trong `where` clause của service không có dòng nào dùng `params.search`. Không gây lỗi runtime (không phải bug), chỉ là tham số chết — nếu sau này có frontend gửi `?search=...` sẽ không có tác dụng gì mà cũng không báo lỗi. Cần bổ sung logic search (ví dụ ILIKE trên tên supplier) khi làm frontend cho module này.
+8. ~~**`PurchaseOrderService.getPurchaseOrders` nhận `search` param nhưng không filter gì**~~ — **đã xong**: `search` filter trên tên nhà cung cấp qua `include` Supplier với `where` dùng `unaccent()` + `Op.iLike` (cùng pattern `sequelizeWhere(fn('unaccent', col(...)), { [Op.iLike]: fn('unaccent', pattern) })` đã có ở `customer.controller.ts searchCustomers`, không viết cách khác) + `required: true` (INNER JOIN, chỉ trả đơn có supplier khớp). Verify thật: search không dấu (`"cong ty"`) vẫn khớp đúng supplier có dấu (`"Công ty..."`).
 9. ~~`stock_transfers` vẫn chưa được phân công~~ — **đã xong**: model/service/controller/route/frontend đầy đủ (xem các mục tương ứng ở trên). `StockTransferManagement.tsx` đã wire vào `App.tsx` cho Manager + WarehouseStaff.
-10. **`supplier.controller.ts` không theo convention chuẩn** — thiếu `return;` sau mỗi `res.json()`/`res.status()` (có thể response tiếp tục chạy xuống code dưới dù controller hiện tại không có gì sau đó nên chưa gây lỗi thật, nhưng dễ thành bug nếu thêm logic), và dùng `catch (error) { console.error(error); ... }` thay vì `catch {}` không bind — cùng vấn đề đã ghi ở #4 cho `category.controller.ts`. Nên chuẩn hóa khi sửa `supplier.controller.ts` lần sau.
+10. ~~**`supplier.controller.ts` không theo convention chuẩn`**~~ — **đã xong**: thêm `return;` sau mỗi `res.json()`/`res.status()` ở `getSuppliers`/`createSupplier`, đổi `catch (error) { console.error(error); ... }` thành `catch {}` không bind — thuần refactor convention, hành vi/response shape không đổi (đã verify lại `GET`/`POST /api/suppliers` cho kết quả y hệt trước khi sửa). `category.controller.ts` (#4) vẫn còn nguyên vấn đề tương tự, chưa đụng tới.
 11. **`/api/loyalty-points` từng bị rớt mount khi merge** — conflict trên `backend/src/server.ts` giữa branch `Bán-hàng` (thêm mount loyalty-points) và `main` (đã có category/promotion/purchase-order/supplier/stock-transfer) khiến dòng mount loyalty-points bị mất trong merge commit, dù file `loyaltyPoint.controller.ts`/`loyaltyPointRoutes.ts` vẫn tồn tại. Đã phát hiện và fix lại. **Bài học:** khi resolve conflict trên `server.ts`, phải so cả 2 phía đầy đủ — không chỉ lấy 1 bên — vì mỗi nhánh thường chỉ thêm 1-2 dòng mount riêng.
 
 **Known issues — tuần 3:**
@@ -262,11 +262,12 @@ git push origin Auth   # only when user says to push
 ## What Still Needs to Be Built
 
 **Backend — high priority:**
-1. Hardening cho `product.controller.ts createProduct`: trả `409` khi trùng `sku` thay vì `500` chung (Known issues — tuần 2 #2)
-2. Bổ sung logic filter `search` cho `PurchaseOrderService.getPurchaseOrders` (Known issues — tuần 2 #8)
-3. Chuẩn hóa `supplier.controller.ts` theo convention `return;`/`catch {}` (Known issues tuần 2 #10)
+(Không còn — cả 3 mục dưới đã xong tuần 5, xem "Known issues — tuần 2" #2/#3/#8/#10.)
 
 **Backend — đã xong (không còn pending):**
+- ~~Hardening cho `product.controller.ts createProduct`: trả `409` khi trùng `sku` thay vì `500` chung~~ — đã xong tuần 5, kèm fix thêm bug `generateSku()` chọn nhầm SKU lớn nhất khi có dữ liệu không đúng format (Known issues — tuần 2 #2)
+- ~~Bổ sung logic filter `search` cho `PurchaseOrderService.getPurchaseOrders`~~ — đã xong tuần 5, dùng `unaccent()` cùng pattern `customer.controller.ts` (Known issues — tuần 2 #8)
+- ~~Chuẩn hóa `supplier.controller.ts` theo convention `return;`/`catch {}`~~ — đã xong tuần 5 (Known issues tuần 2 #10)
 - ~~Category CRUD~~ — đã xong đầy đủ `POST/PUT/DELETE /api/categories`
 - ~~`PromotionService.updatePromotion` + `PUT` endpoint~~ — đã xong
 - ~~Loyalty Point routes~~ — đã có, đã fix mount

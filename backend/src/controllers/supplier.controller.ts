@@ -13,9 +13,8 @@ export const getSuppliers = async (
     res.json({
       data: suppliers,
     });
-  } catch (error) {
-    console.error('[getSuppliers]', error);
-
+    return;
+  } catch {
     res.status(500).json({
       message: 'Lỗi hệ thống',
     });
@@ -44,9 +43,8 @@ export const createSupplier = async (
     res.status(201).json({
       data: supplier,
     });
-  } catch (error) {
-    console.error('[createSupplier]', error);
-
+    return;
+  } catch {
     res.status(500).json({
       message: 'Lỗi hệ thống',
     });
