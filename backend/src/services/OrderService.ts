@@ -7,6 +7,7 @@
 // tên service layer vẫn giữ OrderService theo Schema.md §13.
 
 import { Invoice, InvoiceDetail, Product, Promotion } from '../models';
+import { Op } from 'sequelize';
 import { InventoryService } from './InventoryService';
 import { LoyaltyPointService } from './LoyaltyPointService';
 
@@ -132,9 +133,78 @@ export class OrderService {
   }
 
   /**
+   * OrderService.selectBestPromotion(invoiceId): string | null
+   * Tự động tìm và chọn KM tốt nhất cho hóa đơn hiện tại.
+   *
+   * Quy tắc (theo task đã chốt):
+   *   1. Lọc tất cả KM đang isActive=true, còn trong [startDate, endDate].
+   *   2. Với mỗi KM thỏa điều kiện (minOrderValue / productId match):
+   *      - percentage: discount = subtotal × value / 100
+   *      - fixed:      discount = value (cố định)
+   *   3. Chọn KM có số tiền giảm THỰC TẾ lớn nhất.
+   *   4. Trả về promotionId (hoặc null nếu không có KM hợp lệ).
+   *
+   * Không ghi DB — chỉ đọc Promotion + InvoiceDetail an toàn trước khi gọi applyPromotion.
+   */
+  static async selectBestPromotion(invoiceId: string): Promise<string | null> {
+    const invoice = await Invoice.findByPk(invoiceId);
+    if (!invoice) return null;
+
+    const subtotal = Number(invoice.subtotal);
+    const now = new Date();
+
+    const activePromos = await Promotion.findAll({
+      where: {
+        isActive: true,
+        startDate: { [Op.lte]: now },
+        endDate:   { [Op.gte]: now },
+      },
+    });
+    if (activePromos.length === 0) return null;
+
+    let bestId: string | null = null;
+    let bestDiscount = 0;
+
+    for (const promo of activePromos) {
+      // isValid() uses explicit Number() coercion internally (promotion.model.ts)
+      if (!promo.isValid(subtotal)) continue;
+
+      let discount: number;
+
+      if (promo.productId === null) {
+        // calculateDiscount() returns Number — coerce defensively in case of DECIMAL string
+        discount = Number(promo.calculateDiscount(subtotal));
+      } else {
+        // Product-specific promo — only applies to the matching line
+        const detail = await InvoiceDetail.findOne({
+          where: { invoiceId, productId: promo.productId },
+        });
+        if (!detail) continue;
+        discount = Number(promo.calculateDiscount(Number(detail.subtotal)));
+      }
+
+      // Discount cannot exceed the order total
+      discount = Math.min(discount, subtotal);
+      if (discount <= 0) continue;
+
+      if (discount > bestDiscount) {
+        bestDiscount = discount;
+        bestId = promo.id;
+      }
+    }
+
+    return bestId;
+  }
+
+  /**
    * OrderService.confirmPayment(invoiceId, method, amount): Invoice
    * SD-04 bước cuối — xác nhận thanh toán, trừ kho qua InventoryService
    * (DÙNG CHUNG, Schema.md §5), cộng điểm thành viên nếu có customerId.
+   *
+   * Auto-apply: nếu hóa đơn chưa áp KM nào (promotionId == null),
+   * hệ thống tự gọi selectBestPromotion → applyPromotion trước khi chốt.
+   * Staff không cần chọn tay — nếu có KM tốt hơn Staff đã chọn thì giữ
+   * nguyên lựa chọn của Staff (đã có promotionId rồi thì bỏ qua bước này).
    */
   static async confirmPayment(
     invoiceId: string,
@@ -146,6 +216,22 @@ export class OrderService {
       throw new Error('Không tìm thấy hóa đơn');
     }
 
+    if (amount < Number(invoice.totalAmount)) {
+      throw new Error('Số tiền không đủ');
+    }
+
+    // Auto-apply promotion: nếu chưa có KM nào được áp, tự tìm KM tốt nhất
+    if (!invoice.promotionId) {
+      const bestPromoId = await OrderService.selectBestPromotion(invoiceId);
+      if (bestPromoId) {
+        // applyPromotion cập nhật discountAmount + totalAmount trên invoice rồi save —
+        // sau đó reload để confirmPayment dùng totalAmount đã được giảm
+        await OrderService.applyPromotion(invoiceId, bestPromoId);
+        await invoice.reload();
+      }
+    }
+
+    // Re-check amount sau khi áp KM (totalAmount có thể giảm)
     if (amount < Number(invoice.totalAmount)) {
       throw new Error('Số tiền không đủ');
     }

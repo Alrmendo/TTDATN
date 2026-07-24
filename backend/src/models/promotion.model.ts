@@ -17,13 +17,17 @@ export class Promotion extends Model {
     const now = new Date();
     if (!this.isActive) return false;
     if (now < this.startDate || now > this.endDate) return false;
-    if (this.productId === null && orderValue < (this.minOrderValue ?? 0)) return false;
+    // DECIMAL columns come back as strings from Postgres — coerce explicitly
+    const min = this.minOrderValue != null ? Number(this.minOrderValue) : 0;
+    if (this.productId === null && orderValue < min) return false;
     return true;
   }
 
   calculateDiscount(amount: number): number {
-    if (this.type === 'percentage') return (amount * this.value) / 100;
-    return this.value;
+    // DECIMAL columns come back as strings from Postgres — coerce explicitly
+    const v = Number(this.value);
+    if (this.type === 'percentage') return (amount * v) / 100;
+    return v;
   }
 }
 
