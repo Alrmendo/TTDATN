@@ -270,11 +270,13 @@ export interface ApiInventoryReport {
   items: ApiInventoryReportItem[];
 }
 
-export type PurchaseOrderStatus = 'pending' | 'completed' | 'cancelled';
+export type PurchaseOrderStatus = 'pending' | 'ordered' | 'debt' | 'completed' | 'cancelled';
 
 // Status labels in Vietnamese
 export const PO_STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
   pending:   'Chờ xác nhận',
+  ordered:   'Đã đặt hàng',
+  debt:      'Còn nợ',
   completed: 'Đã nhập kho',
   cancelled: 'Đã hủy',
 };

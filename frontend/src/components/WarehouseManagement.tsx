@@ -63,7 +63,7 @@ interface ApiPurchaseOrder {
   id: string;
   supplierId: string;
   storeId: string;
-  status: 'pending' | 'debt' | 'completed' | 'cancelled';
+  status: 'pending' | 'ordered' | 'debt' | 'completed' | 'cancelled';
   totalCost: string;
   createdBy: string;
   confirmedBy: string | null;
@@ -196,6 +196,7 @@ export default function WarehouseManagement({
   // status map API → UI
   const STATUS_MAP: Record<string, string> = {
     pending: 'Chờ xác nhận',
+    ordered: 'Đã đặt hàng',
     debt: 'Còn nợ',
     completed: 'Hoàn thành',
     cancelled: 'Đã hủy',
@@ -870,6 +871,7 @@ export default function WarehouseManagement({
                     </tr>
                   ) : currentPOItems.map((po) => {
                     const isPending = po.status === 'pending';
+                    const isOrdered = po.status === 'ordered';
                     const isDebt = po.status === 'debt';
                     const isCompleted = po.status === 'completed';
                     const isCancelled = po.status === 'cancelled';
@@ -888,6 +890,11 @@ export default function WarehouseManagement({
                           {isPending && (
                             <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-orange-800 border border-orange-200 shadow-2xs">
                               <span className="w-1.5 h-1.5 rounded-full bg-orange-600 mr-1.5 animate-pulse"></span>Chờ xác nhận
+                            </span>
+                          )}
+                          {isOrdered && (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-600 mr-1.5"></span>Đã đặt hàng
                             </span>
                           )}
                           {(isDebt || isCompleted) && (
@@ -911,8 +918,8 @@ export default function WarehouseManagement({
                             >
                               Xem chi tiết
                             </button>
-                            {/* Manager: nút huỷ đơn pending */}
-                            {isManager && isPending && (
+                            {/* Manager: nút huỷ đơn pending hoặc ordered (khớp PurchaseOrderService.cancelOrder) */}
+                            {isManager && (isPending || isOrdered) && (
                               <button
                                 type="button"
                                 onClick={() => handleCancelOrder(po.id)}

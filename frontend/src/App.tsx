@@ -51,6 +51,7 @@ import OrderHistory from './components/OrderHistory';
 import RevenueReport from './components/RevenueReport';
 import WarehouseManagement from './components/WarehouseManagement';
 import StockTransferManagement from './components/StockTransferManagement';
+import BranchManagerOrders from './components/BranchManagerOrders';
 
 import { searchProducts, getProducts, createProduct, deleteProduct, updateProduct } from './services/product.service';
 
@@ -638,9 +639,9 @@ export default function App() {
                   );
                 })}
 
-                {/* BranchManager-only Sidebar menu (placeholder — nghiệp vụ thật sẽ làm ở task khác) */}
+                {/* BranchManager-only Sidebar menu */}
                 {userRole === 'Quản lý chi nhánh' && [
-                  { name: 'Tổng quan', icon: LayoutDashboard },
+                  { name: 'Đơn nhập hàng', icon: PackageCheck },
                 ].map((item) => {
                   const IconComponent = item.icon;
                   return (
@@ -834,14 +835,9 @@ export default function App() {
                 />
               )}
 
-              {/* --- BRANCH MANAGER ROLE VIEW (placeholder — nghiệp vụ thật để dành cho task khác) --- */}
-              {userRole === 'Quản lý chi nhánh' && activeTab === 'Tổng quan' && (
-                <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-                  <h2 className="text-lg font-bold text-gray-800 mb-2">Tổng quan chi nhánh</h2>
-                  <p className="text-sm text-gray-500">
-                    Chức năng dành cho Quản lý chi nhánh đang được phát triển.
-                  </p>
-                </div>
+              {/* --- BRANCH MANAGER ROLE VIEW --- */}
+              {userRole === 'Quản lý chi nhánh' && activeTab === 'Đơn nhập hàng' && (
+                <BranchManagerOrders />
               )}
 
             </main>
