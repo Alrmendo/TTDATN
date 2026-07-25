@@ -7,6 +7,7 @@ import { Store } from '../models/store.model';
 import { Product } from '../models/product.model';
 import { User } from '../models/user.model';
 import { StockTransferService, StockTransferServiceError } from '../services/StockTransferService';
+import { InventoryServiceError } from '../services/InventoryService';
 
 // GET /api/stock-transfers
 // Mọi role đã login đều xem được. Filter tùy chọn: status, storeId (fromStoreId HOẶC toStoreId)
@@ -71,13 +72,18 @@ export const confirmTransfer = async (req: Request, res: Response): Promise<void
   try {
     const transferId = req.params.id as string;
     const confirmedBy = req.user!.userId;
+    const callerStoreId = req.user!.storeId;
 
-    const transfer = await StockTransferService.confirmTransfer(transferId, confirmedBy);
+    const transfer = await StockTransferService.confirmTransfer(transferId, confirmedBy, callerStoreId);
 
     res.json(transfer);
     return;
   } catch (err) {
     if (err instanceof StockTransferServiceError) {
+      res.status(err.statusCode).json({ message: err.message });
+      return;
+    }
+    if (err instanceof InventoryServiceError) {
       res.status(err.statusCode).json({ message: err.message });
       return;
     }

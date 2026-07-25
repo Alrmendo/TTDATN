@@ -72,10 +72,17 @@ export class StockTransferService {
    * dùng chung. Nếu cộng kho đích thất bại sau khi đã trừ kho nguồn, rollback bằng
    * cách cộng lại kho nguồn.
    */
-  static async confirmTransfer(transferId: string, confirmedBy: string): Promise<StockTransfer> {
+  static async confirmTransfer(
+    transferId: string,
+    confirmedBy: string,
+    callerStoreId: string | null
+  ): Promise<StockTransfer> {
     const transfer = await StockTransfer.findByPk(transferId);
     if (!transfer) {
       throw new StockTransferServiceError('Không tìm thấy phiếu điều chuyển', 404);
+    }
+    if (transfer.toStoreId !== callerStoreId) {
+      throw new StockTransferServiceError('Bạn chỉ được xác nhận phiếu điều chuyển đến đúng chi nhánh của mình', 403);
     }
     if (transfer.status === 'completed') {
       throw new StockTransferServiceError('Phiếu điều chuyển đã được xác nhận', 400);

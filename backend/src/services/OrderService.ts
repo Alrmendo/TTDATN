@@ -6,7 +6,7 @@
 // Model/bảng là Invoice/InvoiceDetail (không dùng Order/OrderDetail) —
 // tên service layer vẫn giữ OrderService theo Schema.md §13.
 
-import { Invoice, InvoiceDetail, Product, Promotion } from '../models';
+import { Invoice, InvoiceDetail, Product, Promotion, Customer } from '../models';
 import { Op } from 'sequelize';
 import { InventoryService } from './InventoryService';
 import { LoyaltyPointService } from './LoyaltyPointService';
@@ -82,6 +82,31 @@ export class OrderService {
   static async removeItem(invoiceId: string, productId: string): Promise<void> {
     await InvoiceDetail.destroy({ where: { invoiceId, productId } });
     await OrderService.recalculateSubtotal(invoiceId);
+  }
+
+  /**
+   * OrderService.setCustomer(invoiceId, customerId): Invoice
+   * Gắn khách hàng vào hóa đơn — chỉ cho phép khi hóa đơn còn ở trạng thái 'draft'
+   * (chưa thanh toán), để confirmPayment sau đó cộng điểm tích lũy đúng cho khách
+   * hàng thật đã chọn, không phải gắn "hồi tố" sau khi đã completed.
+   */
+  static async setCustomer(invoiceId: string, customerId: string): Promise<Invoice> {
+    const invoice = await Invoice.findByPk(invoiceId);
+    if (!invoice) {
+      throw new Error('Không tìm thấy hóa đơn');
+    }
+    if (invoice.status !== 'draft') {
+      throw new Error('Chỉ có thể gắn khách hàng khi hóa đơn còn ở trạng thái nháp');
+    }
+
+    const customer = await Customer.findByPk(customerId);
+    if (!customer) {
+      throw new Error('Không tìm thấy khách hàng');
+    }
+
+    invoice.customerId = customerId;
+    await invoice.save();
+    return invoice;
   }
 
   /**

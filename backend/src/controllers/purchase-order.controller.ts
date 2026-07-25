@@ -73,10 +73,14 @@ export const getPurchaseOrders = async (req: Request, res: Response): Promise<vo
 };
 
 // GET /api/purchase-orders/:id
+// Manager: xem được mọi chi nhánh; WarehouseStaff: chỉ xem được đơn của chi nhánh mình
 export const getPurchaseOrderById = async (req: Request, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
-    const order = await PurchaseOrderService.getPurchaseOrderById(id);
+    const order = await PurchaseOrderService.getPurchaseOrderById(id, {
+      role: req.user!.role,
+      storeId: req.user!.storeId,
+    });
     res.json(order);
     return;
   } catch (err) {
@@ -96,6 +100,7 @@ export const confirmReceipt = async (req: Request, res: Response): Promise<void>
   try {
     const id = req.params.id as string;
     const confirmedBy = req.user!.userId;
+    const callerStoreId = req.user!.storeId;
     const { receivedItems } = req.body;
 
     if (!receivedItems) {
@@ -106,6 +111,7 @@ export const confirmReceipt = async (req: Request, res: Response): Promise<void>
     const order = await PurchaseOrderService.confirmReceipt(id, {
       confirmedBy,
       receivedItems,
+      callerStoreId,
     });
 
     res.json(order);
