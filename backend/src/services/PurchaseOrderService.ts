@@ -161,8 +161,8 @@ export class PurchaseOrderService {
 
   /**
    * Lấy chi tiết 1 đơn nhập hàng.
-   * WarehouseStaff chỉ được xem đơn thuộc đúng chi nhánh của mình (khớp getPurchaseOrders
-   * store-scoping cho WarehouseStaff) — Manager xem được mọi chi nhánh.
+   * WarehouseStaff và BranchManager chỉ được xem đơn thuộc đúng chi nhánh của mình
+   * (khớp getPurchaseOrders store-scoping) — Manager xem được mọi chi nhánh.
    */
   static async getPurchaseOrderById(
     id: string,
@@ -183,9 +183,39 @@ export class PurchaseOrderService {
     });
 
     if (!order) throw new PurchaseOrderServiceError('Đơn nhập hàng không tồn tại', 404);
-    if (caller.role === 'WarehouseStaff' && order.storeId !== caller.storeId) {
+    if ((caller.role === 'WarehouseStaff' || caller.role === 'BranchManager') && order.storeId !== caller.storeId) {
       throw new PurchaseOrderServiceError('Bạn không có quyền truy cập đơn nhập hàng của chi nhánh khác', 403);
     }
+    return order;
+  }
+
+  /**
+   * BranchManager xác nhận đã đặt hàng với nhà cung cấp (bước mới chèn giữa
+   * 'pending' và 'debt'/'completed' — chỉ chuyển được từ 'pending' sang 'ordered').
+   * Chỉ BranchManager đúng chi nhánh của đơn mới được xác nhận.
+   */
+  static async confirmOrdered(
+    id: string,
+    caller: { role: string; storeId: string | null }
+  ): Promise<PurchaseOrder> {
+    const order = await PurchaseOrder.findByPk(id);
+    if (!order) throw new PurchaseOrderServiceError('Đơn nhập hàng không tồn tại', 404);
+
+    if (caller.role !== 'BranchManager' || order.storeId !== caller.storeId) {
+      throw new PurchaseOrderServiceError(
+        'Bạn không có quyền xác nhận đặt hàng cho đơn của chi nhánh khác',
+        403
+      );
+    }
+
+    if (order.status !== 'pending') {
+      throw new PurchaseOrderServiceError(
+        `Đơn đang ở trạng thái "${order.status}" — chỉ có thể xác nhận đã đặt hàng khi đơn còn ở trạng thái "pending"`,
+        409
+      );
+    }
+
+    await order.update({ status: 'ordered' });
     return order;
   }
 
@@ -193,6 +223,8 @@ export class PurchaseOrderService {
    * WarehouseStaff xác nhận nhận hàng (SD-05 bước 14-18).
    * receivedItems dùng số lượng thực tế — có thể khác số lượng đặt (alt flow bước 17).
    * Gọi InventoryService.updateInventory() cho từng item đã nhận.
+   * Chỉ thực hiện được sau khi BranchManager đã confirmOrdered (status='ordered') —
+   * không còn cho xác nhận thẳng từ 'pending' như trước khi có bước BranchManager.
    */
   static async confirmReceipt(id: string, input: ConfirmReceiptInput): Promise<PurchaseOrder> {
     const order = await PurchaseOrder.findByPk(id, {
@@ -208,9 +240,9 @@ export class PurchaseOrderService {
     if (order.storeId !== input.callerStoreId) {
       throw new PurchaseOrderServiceError('Bạn không có quyền xác nhận đơn nhập hàng của chi nhánh khác', 403);
     }
-    if (order.status !== 'pending') {
+    if (order.status !== 'ordered') {
       throw new PurchaseOrderServiceError(
-        `Đơn đã ở trạng thái "${order.status}" — không thể xác nhận`,
+        `Đơn phải ở trạng thái "ordered" (đã được Quản lý chi nhánh xác nhận đặt hàng) mới có thể xác nhận nhận hàng — hiện đang ở trạng thái "${order.status}"`,
         409
       );
     }
@@ -278,12 +310,13 @@ export class PurchaseOrderService {
   }
 
   /**
-   * Manager huỷ đơn nhập hàng (chỉ được huỷ khi còn pending).
+   * Manager huỷ đơn nhập hàng (được huỷ khi còn 'pending' HOẶC đã 'ordered'
+   * nhưng chưa nhận hàng — không huỷ được sau khi đã confirmReceipt).
    */
   static async cancelOrder(id: string): Promise<PurchaseOrder> {
     const order = await PurchaseOrder.findByPk(id);
     if (!order) throw new PurchaseOrderServiceError('Đơn nhập hàng không tồn tại', 404);
-    if (order.status !== 'pending') {
+    if (order.status !== 'pending' && order.status !== 'ordered') {
       throw new PurchaseOrderServiceError(
         `Không thể huỷ đơn đang ở trạng thái "${order.status}"`,
         409

@@ -18,5 +18,5 @@ export const defaultTabByRole: Record<AuthUser['role'], string> = {
   Manager: 'Tổng quan',
   Staff: 'Bán hàng',
   WarehouseStaff: 'Tồn kho',
-  BranchManager: 'Tổng quan',
+  BranchManager: 'Đơn nhập hàng',
 };

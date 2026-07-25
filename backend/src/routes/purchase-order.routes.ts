@@ -7,6 +7,7 @@ import {
   createPurchaseOrder,
   getPurchaseOrders,
   getPurchaseOrderById,
+  confirmOrder,
   confirmReceipt,
   cancelPurchaseOrder,
 } from '../controllers/purchase-order.controller';
@@ -20,17 +21,17 @@ const router = Router();
 // Tất cả route yêu cầu đăng nhập
 router.use(authMiddleware);
 
-// GET /api/purchase-orders — Manager + WarehouseStaff
+// GET /api/purchase-orders — Manager + WarehouseStaff + BranchManager (store-scoped)
 router.get(
   '/',
-  roleMiddleware(['Manager', 'WarehouseStaff']),
+  roleMiddleware(['Manager', 'WarehouseStaff', 'BranchManager']),
   getPurchaseOrders
 );
 
-// GET /api/purchase-orders/:id — Manager + WarehouseStaff
+// GET /api/purchase-orders/:id — Manager + WarehouseStaff + BranchManager (store-scoped)
 router.get(
   '/:id',
-  roleMiddleware(['Manager', 'WarehouseStaff']),
+  roleMiddleware(['Manager', 'WarehouseStaff', 'BranchManager']),
   getPurchaseOrderById
 );
 
@@ -55,7 +56,14 @@ router.post(
   recordPurchaseOrderPayment
 );
 
-// PUT /api/purchase-orders/:id/confirm — WarehouseStaff only
+// PUT /api/purchase-orders/:id/confirm-order — BranchManager only (pending → ordered)
+router.put(
+  '/:id/confirm-order',
+  roleMiddleware(['BranchManager']),
+  confirmOrder
+);
+
+// PUT /api/purchase-orders/:id/confirm — WarehouseStaff only (ordered → debt/completed)
 router.put(
   '/:id/confirm',
   roleMiddleware(['WarehouseStaff']),
