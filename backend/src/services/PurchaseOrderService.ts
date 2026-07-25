@@ -14,7 +14,7 @@ import { Supplier } from '../models/supplier.model';
 import { Store } from '../models/store.model';
 import { User } from '../models/user.model';
 import { InventoryService } from './InventoryService';
-import { Transaction, Op } from 'sequelize';
+import { Transaction, Op, fn, col, where as sequelizeWhere } from 'sequelize';
 
 export interface CreatePurchaseOrderInput {
   supplierId: string;
@@ -123,9 +123,12 @@ export class PurchaseOrderService {
       attributes: ['id', 'supplierName', 'contactInfo'],
     };
     if (params.search && params.search.trim()) {
-      supplierInclude.where = {
-        supplierName: { [Op.iLike]: `%${params.search.trim()}%` },
-      };
+      const pattern = `%${params.search.trim()}%`;
+      // unaccent() để tìm không phân biệt dấu tiếng Việt — cùng pattern với
+      // customer.controller.ts (searchCustomers), không viết cách khác.
+      supplierInclude.where = sequelizeWhere(fn('unaccent', col('supplierName')), {
+        [Op.iLike]: fn('unaccent', pattern),
+      });
       // required: true → INNER JOIN, chỉ trả về orders có supplier khớp search
       supplierInclude.required = true;
     }
@@ -243,9 +246,14 @@ export class PurchaseOrderService {
         0
       );
 
+      // Nếu không có gì để nợ (vd toàn bộ dòng receivedQuantity=0), bỏ qua bước
+      // 'debt' — recordPayment() yêu cầu amount > 0 nên đơn nợ 0 đồng sẽ không
+      // bao giờ tới được 'completed' nếu vẫn set 'debt' ở đây.
+      const status = totalCost <= 0 ? 'completed' : 'debt';
+
       await order.update(
         {
-          status: 'debt',
+          status,
           totalCost,
           confirmedBy,
           confirmedAt: new Date(),

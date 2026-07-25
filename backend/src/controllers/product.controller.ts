@@ -56,7 +56,14 @@ export const getProducts = async (
 };
 
 const generateSku = async (): Promise<string> => {
+  // Chỉ xét các SKU đúng format SPxxxx (4 chữ số) — bảng products có thể còn
+  // sót SKU không đúng format (vd dữ liệu test cũ dạng "SP001"/"TEST-...") từ
+  // trước khi generateSku() tồn tại; ORDER BY sku DESC không lọc sẽ có thể chọn
+  // nhầm chuỗi lớn nhất theo alphabet (vd "TEST-..." > "SP0015") và làm
+  // parseInt(...) ra NaN. Regex ràng buộc đúng 4 chữ số nên các chuỗi khớp có
+  // cùng độ dài => ORDER BY DESC theo chuỗi tương đương ORDER BY DESC theo số.
   const lastProduct = await Product.findOne({
+    where: { sku: { [Op.regexp]: '^SP[0-9]{4}$' } },
     order: [['sku', 'DESC']],
     attributes: ['sku'],
   });
