@@ -36,15 +36,15 @@ export const createPurchaseOrder = async (req: Request, res: Response): Promise<
 };
 
 // GET /api/purchase-orders
-// Manager: xem tất cả; WarehouseStaff: chỉ xem store của mình
+// Manager: xem tất cả; WarehouseStaff + BranchManager: chỉ xem store của mình
 export const getPurchaseOrders = async (req: Request, res: Response): Promise<void> => {
   try {
     const { role, storeId: userStoreId } = req.user!;
     const { status, search, startDate, endDate } = req.query;
 
-    // WarehouseStaff bị giới hạn về store của mình
+    // WarehouseStaff + BranchManager bị giới hạn về store của mình
     let storeId: string | undefined;
-    if (role === 'WarehouseStaff') {
+    if (role === 'WarehouseStaff' || role === 'BranchManager') {
       storeId = userStoreId ?? undefined;
     } else {
       // Manager có thể filter theo storeId tuỳ ý
@@ -78,6 +78,28 @@ export const getPurchaseOrderById = async (req: Request, res: Response): Promise
   try {
     const id = req.params.id as string;
     const order = await PurchaseOrderService.getPurchaseOrderById(id, {
+      role: req.user!.role,
+      storeId: req.user!.storeId,
+    });
+    res.json(order);
+    return;
+  } catch (err) {
+    if (err instanceof PurchaseOrderServiceError) {
+      res.status(err.statusCode).json({ message: err.message });
+      return;
+    }
+    console.error(err);
+    res.status(500).json({ message: 'Lỗi server' });
+    return;
+  }
+};
+
+// PUT /api/purchase-orders/:id/confirm-order
+// BranchManager xác nhận đã đặt hàng với nhà cung cấp (pending → ordered)
+export const confirmOrder = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = req.params.id as string;
+    const order = await PurchaseOrderService.confirmOrdered(id, {
       role: req.user!.role,
       storeId: req.user!.storeId,
     });
