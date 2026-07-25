@@ -36,6 +36,7 @@ export interface ReceivedItem {
 export interface ConfirmReceiptInput {
   confirmedBy: string; // userId của WarehouseStaff
   receivedItems: ReceivedItem[];
+  callerStoreId: string | null; // storeId của WarehouseStaff đang gọi — phải khớp order.storeId
 }
 
 export class PurchaseOrderServiceError extends Error {
@@ -160,8 +161,13 @@ export class PurchaseOrderService {
 
   /**
    * Lấy chi tiết 1 đơn nhập hàng.
+   * WarehouseStaff chỉ được xem đơn thuộc đúng chi nhánh của mình (khớp getPurchaseOrders
+   * store-scoping cho WarehouseStaff) — Manager xem được mọi chi nhánh.
    */
-  static async getPurchaseOrderById(id: string): Promise<PurchaseOrder> {
+  static async getPurchaseOrderById(
+    id: string,
+    caller: { role: string; storeId: string | null }
+  ): Promise<PurchaseOrder> {
     const order = await PurchaseOrder.findByPk(id, {
       include: [
         { model: Supplier, attributes: ['id', 'supplierName', 'contactInfo'] },
@@ -177,6 +183,9 @@ export class PurchaseOrderService {
     });
 
     if (!order) throw new PurchaseOrderServiceError('Đơn nhập hàng không tồn tại', 404);
+    if (caller.role === 'WarehouseStaff' && order.storeId !== caller.storeId) {
+      throw new PurchaseOrderServiceError('Bạn không có quyền truy cập đơn nhập hàng của chi nhánh khác', 403);
+    }
     return order;
   }
 
@@ -196,6 +205,9 @@ export class PurchaseOrderService {
     });
 
     if (!order) throw new PurchaseOrderServiceError('Đơn nhập hàng không tồn tại', 404);
+    if (order.storeId !== input.callerStoreId) {
+      throw new PurchaseOrderServiceError('Bạn không có quyền xác nhận đơn nhập hàng của chi nhánh khác', 403);
+    }
     if (order.status !== 'pending') {
       throw new PurchaseOrderServiceError(
         `Đơn đã ở trạng thái "${order.status}" — không thể xác nhận`,

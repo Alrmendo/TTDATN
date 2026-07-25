@@ -48,6 +48,32 @@ export const removeItem = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
+export const setInvoiceCustomer = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const invoiceId = req.params.id as string;
+    const { customerId } = req.body as { customerId: string };
+
+    if (!customerId) {
+      res.status(400).json({ message: 'customerId là bắt buộc' });
+      return;
+    }
+
+    const invoice = await OrderService.setCustomer(invoiceId, customerId);
+    res.status(200).json(invoice);
+    return;
+  } catch (err) {
+    if (err instanceof Error && (err.message === 'Không tìm thấy hóa đơn' || err.message === 'Không tìm thấy khách hàng')) {
+      res.status(404).json({ message: err.message });
+      return;
+    }
+    if (err instanceof Error && err.message === 'Chỉ có thể gắn khách hàng khi hóa đơn còn ở trạng thái nháp') {
+      res.status(409).json({ message: err.message });
+      return;
+    }
+    res.status(500).json({ message: 'Lỗi máy chủ nội bộ' });
+  }
+};
+
 export const applyPromotion = async (req: Request, res: Response): Promise<void> => {
   try {
     const invoiceId = req.params.id as string;

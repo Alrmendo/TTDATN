@@ -3,6 +3,7 @@ import {
   createOrder,
   addItem,
   removeItem,
+  setInvoiceCustomer,
   applyPromotion,
   applyBestPromotion,
   confirmPayment,
@@ -16,6 +17,7 @@ const router = Router();
 router.post('/', authMiddleware, roleMiddleware(['Staff']), createOrder);
 router.post('/:id/items', authMiddleware, roleMiddleware(['Staff']), addItem);
 router.delete('/:id/items/:productId', authMiddleware, roleMiddleware(['Staff']), removeItem);
+router.patch('/:id/customer', authMiddleware, roleMiddleware(['Staff']), setInvoiceCustomer);
 router.post('/:id/promotion', authMiddleware, roleMiddleware(['Staff']), applyPromotion);
 router.post('/:id/confirm-payment', authMiddleware, roleMiddleware(['Staff']), confirmPayment);
 router.get('/', authMiddleware, roleMiddleware(['Staff', 'Manager']), getInvoices);

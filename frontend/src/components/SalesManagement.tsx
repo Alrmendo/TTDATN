@@ -152,6 +152,23 @@ export default function SalesManagement({
     };
   }, [productSearch]);
 
+  // Gắn khách hàng vào hóa đơn ở server ngay khi chọn được — im lặng, không chặn UI,
+  // cùng pattern với autoApplyPromotion() (gọi ngay, lỗi thì chỉ log, không báo Staff).
+  const syncInvoiceCustomer = async (invoiceId: string, customerId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/invoices/${invoiceId}/customer`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ customerId }),
+      });
+      if (!res.ok) {
+        console.error('[syncInvoiceCustomer] server error:', res.status);
+      }
+    } catch (err) {
+      console.error('[syncInvoiceCustomer] network error:', err);
+    }
+  };
+
   const searchCustomer = async (phone: string) => {
     setCustomerMessage('');
     if (!phone.trim()) return;
@@ -163,6 +180,7 @@ export default function SalesManagement({
       const data = (await res.json()) as ApiCustomer[];
       if (data.length > 0) {
         setSelectedCustomer(data[0]);
+        if (currentInvoiceId) syncInvoiceCustomer(currentInvoiceId, data[0].id);
       } else {
         setSelectedCustomer(null);
         setCustomerMessage('Không tìm thấy khách hàng');
