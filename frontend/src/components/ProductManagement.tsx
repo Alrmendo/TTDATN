@@ -445,18 +445,6 @@ export default function ProductManagement({ products, categories, onAddProduct, 
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="block font-semibold text-gray-700">Số lượng tồn ban đầu</label>
-              <input
-                type="number"
-                required
-                min="0"
-                value={stock}
-                onChange={(e) => setStock(Number(e.target.value))}
-                className="block w-full border border-gray-300 rounded-md p-2"
-              />
-            </div>
-
             <div className="md:col-span-2 flex justify-end space-x-2 pt-2">
               <button
                 type="button"
@@ -536,18 +524,6 @@ export default function ProductManagement({ products, categories, onAddProduct, 
                 min="0"
                 value={editCost}
                 onChange={(e) => setEditCost(Number(e.target.value))}
-                className="block w-full border border-gray-300 rounded-md p-2"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="block font-semibold text-gray-700">Số lượng tồn ban đầu</label>
-              <input
-                type="number"
-                required
-                min="0"
-                value={stock}
-                onChange={(e) => setStock(Number(e.target.value))}
                 className="block w-full border border-gray-300 rounded-md p-2"
               />
             </div>
