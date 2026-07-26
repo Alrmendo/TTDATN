@@ -165,7 +165,7 @@ export default function WarehouseManagement({
 
   // Filter / pagination
   const [poSearch, setPoSearch] = useState('');
-  const [poStatusFilter, setPoStatusFilter] = useState<'Tất cả' | 'Chờ xác nhận' | 'Còn nợ' | 'Hoàn thành' | 'Đã hủy'>('Tất cả');
+  const [poStatusFilter, setPoStatusFilter] = useState<'Tất cả' | 'Chờ xác nhận' | 'Đã đặt hàng' | 'Còn nợ' | 'Hoàn thành' | 'Đã hủy'>('Tất cả');
   const [poCurrentPage, setPoCurrentPage] = useState(1);
   const poItemsPerPage = 5;
 
@@ -203,6 +203,7 @@ export default function WarehouseManagement({
   };
   const STATUS_MAP_REVERSE: Record<string, string> = {
     'Chờ xác nhận': 'pending',
+    'Đã đặt hàng': 'ordered',
     'Còn nợ': 'debt',
     'Hoàn thành': 'completed',
     'Đã hủy': 'cancelled',
@@ -469,8 +470,8 @@ export default function WarehouseManagement({
   const lowStockProducts = apiStock.filter(item => item.quantity < item.lowStockThreshold);
   const lowStockCount = lowStockProducts.length;
 
-  // Pending purchase orders count (lấy từ đơn nhập hàng thực — API)
-  const pendingOrdersCount = apiOrders.filter(o => o.status === 'pending').length;
+  // Pending/ordered purchase orders count (lấy từ đơn nhập hàng thực — API)
+  const pendingOrdersCount = apiOrders.filter(o => o.status === 'pending' || o.status === 'ordered').length;
 
   // Filtered Products for the Tồn kho grid
   const filteredProducts = apiStock.filter(item => {
@@ -817,6 +818,7 @@ export default function WarehouseManagement({
                   className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-xs font-semibold">
                   <option value="Tất cả">Tất cả</option>
                   <option value="Chờ xác nhận">Chờ xác nhận</option>
+                  <option value="Đã đặt hàng">Đã đặt hàng</option>
                   <option value="Còn nợ">Còn nợ</option>
                   <option value="Hoàn thành">Hoàn thành</option>
                   <option value="Đã hủy">Đã hủy</option>
@@ -1120,7 +1122,7 @@ export default function WarehouseManagement({
                             <th className="px-3 py-2.5 font-black text-gray-500 uppercase tracking-wider text-[9px] text-right">Đơn giá</th>
                             <th className="px-3 py-2.5 font-black text-gray-500 uppercase tracking-wider text-[9px] text-right">SL đặt</th>
                             <th className="px-3 py-2.5 font-black text-gray-500 uppercase tracking-wider text-[9px] text-right">
-                              {selectedPO.status === 'pending' && isWarehouseStaff ? 'SL thực nhận' : 'SL đã nhận'}
+                              {selectedPO.status === 'ordered' && isWarehouseStaff ? 'SL thực nhận' : 'SL đã nhận'}
                             </th>
                           </tr>
                         </thead>
@@ -1141,7 +1143,7 @@ export default function WarehouseManagement({
                                 <td className="px-3 py-2.5 text-right font-bold font-mono text-gray-800">{detail.quantity}</td>
                                 <td className="px-3 py-2.5 text-right">
                                   {/* WarehouseStaff + pending: input chỉnh được */}
-                                  {selectedPO.status === 'pending' && isWarehouseStaff ? (
+                                  {selectedPO.status === 'ordered' && isWarehouseStaff ? (
                                     <input
                                       type="number"
                                       min={0}
@@ -1221,8 +1223,14 @@ export default function WarehouseManagement({
                         {selectedPO.status === 'pending' ? (
                           <>
                             <span className="absolute -left-[22px] top-1 bg-orange-400 w-3 h-3 rounded-full border-2 border-white animate-pulse"></span>
-                            <div className="font-bold text-orange-600 text-xs">Đang chờ thủ kho kiểm định</div>
-                            <p className="text-[10.5px] text-gray-400 mt-0.5">Xe tải chở hàng đang di chuyển hoặc đang dỡ hàng tại cửa hàng. Chờ nhân viên kho kiểm đếm thực tế và bấm nút duyệt.</p>
+                            <div className="font-bold text-orange-600 text-xs">Đang chờ quản lý chi nhánh xác nhận đặt hàng</div>
+                            <p className="text-[10.5px] text-gray-400 mt-0.5">Đơn vừa được tạo và đang chờ Branch Manager xác nhận đã đặt hàng với nhà cung cấp trước khi nhân viên kho tiến hành nhập hàng.</p>
+                          </>
+                        ) : selectedPO.status === 'ordered' ? (
+                          <>
+                            <span className="absolute -left-[22px] top-1 bg-blue-500 w-3 h-3 rounded-full border-2 border-white"></span>
+                            <div className="font-bold text-blue-600 text-xs">Đã xác nhận đặt hàng — chờ nhận hàng</div>
+                            <p className="text-[10.5px] text-gray-400 mt-0.5">Đơn đã được xác nhận bởi Quản lý chi nhánh. Nhân viên kho có thể kiểm đếm số lượng thực nhận và xác nhận nhập hàng.</p>
                           </>
                         ) : selectedPO.status === 'debt' || selectedPO.status === 'completed' ? (
                           <>
@@ -1276,7 +1284,7 @@ export default function WarehouseManagement({
                 </div>
               )}
               {/* Nút Xác nhận nhận hàng — chỉ WarehouseStaff, đơn pending */}
-              {selectedPO.status === 'pending' && isWarehouseStaff && !detailLoading && (
+              {selectedPO.status === 'ordered' && isWarehouseStaff && !detailLoading && (
                 <button
                   type="button"
                   onClick={handleConfirm}
