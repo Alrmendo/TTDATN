@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { Customer, Invoice, ApiCustomer } from '../types';
+import { Customer, Invoice, ApiCustomer, ApiInvoice } from '../types';
 import {
   Search,
   Plus,
@@ -17,9 +17,15 @@ import {
   Award,
   DollarSign,
   Check,
-  ShoppingBag
+  ShoppingBag,
+  Eye,
+  Printer,
+  AlertCircle,
+  Receipt,
 } from 'lucide-react';
 import { searchCustomers, createCustomer, updateCustomer } from '../services/customer.service';
+import { API_BASE } from '../config/api';
+import { downloadInvoicePdf } from '../utils/invoicePdf';
 
 interface CustomerManagementProps {
   customers: Customer[];
@@ -93,6 +99,10 @@ export default function CustomerManagement({
 
   // Toast / Notification banner
   const [notification, setNotification] = useState<string | null>(null);
+  const [customerHistoryInvoices, setCustomerHistoryInvoices] = useState<ApiInvoice[]>([]);
+  const [isLoadingCustomerHistory, setIsLoadingCustomerHistory] = useState(false);
+  const [customerHistoryError, setCustomerHistoryError] = useState('');
+  const [selectedHistoryInvoice, setSelectedHistoryInvoice] = useState<ApiInvoice | null>(null);
 
   const showToast = (message: string) => {
     setNotification(message);
@@ -102,6 +112,13 @@ export default function CustomerManagement({
   const formatVND = (num: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
   };
+
+  const formatDateTime = (iso: string) => new Date(iso).toLocaleString('vi-VN', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
+
+  const getToken = () => localStorage.getItem('token');
 
   // ------------------ BUSINESS METRICS ------------------
   const totalCustomers = localCustomers.length;
@@ -198,10 +215,38 @@ export default function CustomerManagement({
     }
   };
 
-  // Find customer actual invoices
-  const getCustomerInvoices = (cId: string) => {
-    return invoices.filter(invoice => invoice.customerId === cId);
+  const loadCustomerHistory = async (customer: Customer) => {
+    setSelectedHistoryCust(customer);
+    setCustomerHistoryInvoices([]);
+    setCustomerHistoryError('');
+    setSelectedHistoryInvoice(null);
+    setIsLoadingCustomerHistory(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/invoices?customerId=${encodeURIComponent(customer.id)}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+
+      if (!res.ok) {
+        throw new Error('Không thể tải lịch sử mua hàng');
+      }
+
+      const data = (await res.json()) as ApiInvoice[];
+      setCustomerHistoryInvoices(data);
+    } catch {
+      setCustomerHistoryError('Không thể tải lịch sử mua hàng của khách hàng.');
+    } finally {
+      setIsLoadingCustomerHistory(false);
+    }
   };
+
+  const handlePrintHistoryInvoice = (invoice: ApiInvoice) => {
+    downloadInvoicePdf(invoice);
+    showToast(`Đã tải PDF hóa đơn ${invoice.id.slice(0, 8)}…`);
+  };
+
+  const productsSummary = (invoice: ApiInvoice) =>
+    invoice.invoiceDetails?.map((detail) => detail.product?.productName).filter(Boolean).join(', ') || '—';
 
   return (
     <div className="space-y-6">
@@ -393,7 +438,7 @@ export default function CustomerManagement({
                         
                         {/* View History Button */}
                         <button
-                          onClick={() => setSelectedHistoryCust(c)}
+                          onClick={() => void loadCustomerHistory(c)}
                           className="px-2 py-1 text-[10px] font-extrabold border border-gray-200 hover:border-gray-300 hover:bg-gray-50 rounded text-gray-600 transition flex items-center space-x-0.5"
                           title="Lịch sử giao dịch"
                         >
@@ -684,47 +729,168 @@ export default function CustomerManagement({
             </div>
 
             {/* Invoices List */}
-            <div className="p-5 max-h-96 overflow-y-auto space-y-3">
-              <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Danh sách hóa đơn đã phát hành ({getCustomerInvoices(selectedHistoryCust.id).length})</h4>
-              
-              {getCustomerInvoices(selectedHistoryCust.id).map(inv => (
-                <div key={inv.invoiceId} className="p-3 bg-gray-50 border border-gray-150/40 rounded-xl flex items-center justify-between text-xs hover:bg-gray-100/30 transition">
-                  <div className="space-y-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-gray-950 font-mono">{inv.invoiceId}</span>
-                      <span className={`px-2 py-0.5 text-[9px] font-bold rounded ${
-                        inv.status === 'Hoàn thành' 
-                          ? 'bg-emerald-100 text-emerald-800' 
-                          : inv.status === 'Đã hủy' 
-                          ? 'bg-rose-100 text-rose-800' 
-                          : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {inv.status}
-                      </span>
-                    </div>
+            <div className="p-5 max-h-[32rem] overflow-y-auto space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                  Danh sách hóa đơn đã phát hành ({customerHistoryInvoices.length})
+                </h4>
+                {isLoadingCustomerHistory && (
+                  <span className="text-[10px] text-blue-600 font-semibold">Đang tải...</span>
+                )}
+              </div>
 
-                    <div className="text-[10px] text-gray-400 flex items-center space-x-2">
-                      <span>Cửa hàng: <span className="font-bold text-gray-600">{inv.storeName}</span></span>
-                      <span>&bull;</span>
-                      <span>Thu ngân: <span className="font-bold text-gray-600">{inv.staffName}</span></span>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="font-black text-gray-950 font-mono block">{formatVND(inv.totalAmount)}</span>
-                    <span className="text-[9px] text-gray-400 font-mono block">{inv.date}</span>
-                  </div>
+              {customerHistoryError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-[11px] text-red-600">
+                  {customerHistoryError}
                 </div>
-              ))}
+              )}
 
-              {getCustomerInvoices(selectedHistoryCust.id).length === 0 && (
+              {!isLoadingCustomerHistory && !customerHistoryError && customerHistoryInvoices.length === 0 && (
                 <div className="py-12 text-center text-gray-400">
                   <ShoppingBag className="w-8 h-8 text-gray-300 mx-auto stroke-1 mb-2 animate-bounce" />
                   <p className="text-xs font-bold">Thành viên này chưa thực hiện bất kỳ giao dịch nào.</p>
                   <p className="text-[10px] text-gray-400 mt-1">Khi phát hành đơn hàng mới tại quầy, số điểm và chi tiêu sẽ tự động cộng dồn</p>
                 </div>
               )}
+
+              {!isLoadingCustomerHistory && !customerHistoryError && customerHistoryInvoices.map((inv) => (
+                <div key={inv.id} className="p-3 bg-gray-50 border border-gray-150/40 rounded-xl hover:bg-gray-100/30 transition">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-gray-950 font-mono">{inv.id.slice(0, 8)}…</span>
+                        <span className={`px-2 py-0.5 text-[9px] font-bold rounded ${
+                          inv.status === 'completed'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : inv.status === 'cancelled'
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {inv.status === 'completed' ? 'Hoàn thành' : inv.status === 'cancelled' ? 'Đã hủy' : 'Nháp'}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-gray-400">
+                        <span>Thời gian: <span className="font-semibold text-gray-600">{formatDateTime(inv.createdAt)}</span></span>
+                      </div>
+                      <div className="text-[10px] text-gray-400">
+                        <span>Sản phẩm: <span className="font-semibold text-gray-600">{productsSummary(inv)}</span></span>
+                      </div>
+                    </div>
+
+                    <div className="text-right space-y-2">
+                      <div className="font-black text-gray-950 font-mono">{formatVND(Number(inv.totalAmount))}</div>
+                      <div className="text-[10px] text-gray-500">
+                        Khuyến mãi: <span className="font-semibold text-gray-600">{inv.promotion?.name || '—'}</span>
+                      </div>
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          onClick={() => setSelectedHistoryInvoice(inv)}
+                          className="px-2 py-1 text-[10px] font-extrabold border border-gray-200 hover:border-[#3B82F6] hover:text-[#3B82F6] rounded bg-white text-gray-700 transition flex items-center gap-1"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>Xem chi tiết</span>
+                        </button>
+                        <button
+                          onClick={() => handlePrintHistoryInvoice(inv)}
+                          className="px-2 py-1 text-[10px] font-extrabold border border-gray-200 hover:border-emerald-400 hover:text-emerald-600 rounded bg-white text-gray-700 transition flex items-center gap-1"
+                        >
+                          <Printer className="w-3 h-3" />
+                          <span>In hóa đơn</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
+
+            {selectedHistoryInvoice && (
+              <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 print:bg-white print:relative print:inset-auto">
+                <div className="bg-white max-w-lg w-full rounded-2xl shadow-xl border border-gray-100 overflow-hidden text-xs font-semibold animate-scaleIn print:shadow-none print:border-0">
+                  <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/80 print:hidden">
+                    <div>
+                      <h3 className="text-xs font-bold text-gray-900 uppercase tracking-widest flex items-center">
+                        <Receipt className="w-4 h-4 mr-1.5 text-[#3B82F6]" />
+                        Chi tiết hóa đơn
+                      </h3>
+                      <p className="text-[10px] text-gray-400 mt-1 font-mono">{selectedHistoryInvoice.id}</p>
+                    </div>
+                    <button onClick={() => setSelectedHistoryInvoice(null)} className="p-1 hover:bg-gray-200 text-gray-400 hover:text-gray-700 rounded-full transition">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="p-5 space-y-4 font-medium max-h-[75vh] overflow-y-auto">
+                    <div className="p-3.5 bg-gray-50 rounded-lg flex justify-between items-center text-xs">
+                      <div>
+                        <span className="block text-[8px] text-gray-400 uppercase font-black">Khách hàng</span>
+                        <span className="font-semibold text-gray-800">{selectedHistoryInvoice.customer?.fullName || 'Khách vãng lai'}</span>
+                        {selectedHistoryInvoice.customer?.phone && (
+                          <span className="block text-[10px] text-gray-400 font-mono">{selectedHistoryInvoice.customer.phone}</span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <span className="block text-[8px] text-gray-400 uppercase font-black">Thời gian</span>
+                        <span className="font-mono text-gray-700">{formatDateTime(selectedHistoryInvoice.createdAt)}</span>
+                      </div>
+                    </div>
+
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="text-gray-400 uppercase text-[9px] font-bold">
+                        <tr>
+                          <th className="py-1.5">Sản phẩm</th>
+                          <th className="py-1.5 text-center">SL</th>
+                          <th className="py-1.5 text-right">Đơn giá</th>
+                          <th className="py-1.5 text-right">Thành tiền</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {selectedHistoryInvoice.invoiceDetails?.map((detail) => (
+                          <tr key={detail.id}>
+                            <td className="py-2 font-bold text-gray-900">{detail.product?.productName || detail.productId}</td>
+                            <td className="py-2 text-center font-mono">{detail.quantity}</td>
+                            <td className="py-2 text-right font-mono">{formatVND(Number(detail.unitPrice))}</td>
+                            <td className="py-2 text-right font-mono font-bold">{formatVND(Number(detail.subtotal))}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    <div className="border-t border-dashed border-gray-200 pt-3 space-y-1.5 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Tạm tính:</span>
+                        <span className="font-mono font-bold">{formatVND(Number(selectedHistoryInvoice.subtotal))}</span>
+                      </div>
+                      <div className="flex justify-between text-rose-600">
+                        <span>Giảm giá {selectedHistoryInvoice.promotion?.name ? `(${selectedHistoryInvoice.promotion.name})` : ''}:</span>
+                        <span className="font-mono font-bold">-{formatVND(Number(selectedHistoryInvoice.discountAmount))}</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-bold text-gray-950 border-t border-gray-200 pt-2">
+                        <span>Tổng cộng:</span>
+                        <span className="font-mono text-[#3B82F6]">{formatVND(Number(selectedHistoryInvoice.totalAmount))}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end space-x-2 pt-3 border-t border-gray-100 print:hidden">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedHistoryInvoice(null)}
+                        className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-semibold transition"
+                      >
+                        Đóng
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePrintHistoryInvoice(selectedHistoryInvoice)}
+                        className="px-4 py-2 bg-[#3B82F6] hover:bg-blue-600 text-white rounded-lg font-semibold transition"
+                      >
+                        In hóa đơn
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Footer Close button */}
             <div className="p-4 border-t border-gray-100 flex justify-end bg-gray-50/50">

@@ -153,7 +153,7 @@ export const confirmPayment = async (req: Request, res: Response): Promise<void>
 
 export const getInvoices = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { startDate, endDate, search } = req.query as Record<string, string | undefined>;
+    const { startDate, endDate, search, customerId } = req.query as Record<string, string | undefined>;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {
@@ -162,7 +162,11 @@ export const getInvoices = async (req: Request, res: Response): Promise<void> =>
       status: { [Op.ne]: 'draft' },
     };
 
-    if (req.user!.role === 'Staff') {
+    if (customerId) {
+      where.customerId = customerId;
+    }
+
+    if (req.user!.role === 'Staff' || req.user!.role === 'BranchManager') {
       where.storeId = req.user!.storeId;
     } else if (req.user!.role === 'Manager' && req.query.storeId) {
       where.storeId = req.query.storeId as string;
