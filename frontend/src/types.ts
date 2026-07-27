@@ -185,6 +185,7 @@ export interface ApiProduct {
 export interface ApiStockItem {
   id: string;
   storeId: string;
+  storeName: string | null; // chỉ có ý nghĩa ở chế độ Tổng thể (gọi API không kèm storeId)
   productId: string;
   productName: string | null;
   sku: string | null;

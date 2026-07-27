@@ -559,6 +559,7 @@ export default function App() {
                 {userRole === 'Quản lý' && [
                   { name: 'Tổng quan', icon: LayoutDashboard },
                   { name: 'Sản phẩm', icon: ShoppingBag },
+                  { name: 'Tồn kho', icon: Boxes },
                   { name: 'Đơn nhập hàng', icon: PackageCheck },
                   { name: 'Điều chuyển hàng', icon: RefreshCw },
                   { name: 'Khách hàng', icon: UserCheck },
@@ -747,6 +748,18 @@ export default function App() {
                       onDeleteProduct={handleDeleteProduct}
                       onSearch={handleSearchProducts}
                       onRefreshCategories={loadCategories}
+                    />
+                  )}
+                  {activeTab === 'Tồn kho' && (
+                    <WarehouseManagement
+                      stores={initialStores}
+                      activeTab="Tồn kho"
+                      userRole={userRole}
+                      onAdjustStock={(productId, newStock) => {
+                        setProducts(prev => prev.map(p =>
+                          p.productId === productId ? { ...p, stock: newStock } : p
+                        ));
+                      }}
                     />
                   )}
                   {activeTab === 'Đơn nhập hàng' && (
