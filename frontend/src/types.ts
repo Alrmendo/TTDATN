@@ -13,6 +13,7 @@ export interface Product {
 export interface Category {
   id: string;
   categoryName: string;
+  description?: string | null;
 }
 
 export interface Employee {

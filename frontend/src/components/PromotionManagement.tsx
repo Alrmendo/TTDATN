@@ -86,7 +86,7 @@ export default function PromotionManagement({
 
   // Form builder fields (Create)
   const [newName, setNewName] = useState('');
-  const [newType, setNewType] = useState<'Phần trăm' | 'Giảm tiền mặt' | 'Đồng giá'>('Phần trăm');
+  const [newType, setNewType] = useState<'Phần trăm' | 'Giảm tiền mặt'>('Phần trăm');
   const [newValue, setNewValue] = useState(0);
   const [newMinSpend, setNewMinSpend] = useState(100000);
   const [newStartDate, setNewStartDate] = useState('');
@@ -95,7 +95,7 @@ export default function PromotionManagement({
 
   // Form builder fields (Edit)
   const [editName, setEditName] = useState('');
-  const [editType, setEditType] = useState<'Phần trăm' | 'Giảm tiền mặt' | 'Đồng giá'>('Phần trăm');
+  const [editType, setEditType] = useState<'Phần trăm' | 'Giảm tiền mặt'>('Phần trăm');
   const [editValue, setEditValue] = useState(0);
   const [editMinSpend, setEditMinSpend] = useState(100000);
   const [editStartDate, setEditStartDate] = useState('');
@@ -588,12 +588,11 @@ export default function PromotionManagement({
                   <label className="block text-[10px] font-bold text-gray-500 uppercase">Loại hình thức ưu đãi</label>
                   <select
                     value={newType}
-                    onChange={(e) => setNewType(e.target.value as any)}
+                    onChange={(e) => setNewType(e.target.value as 'Phần trăm' | 'Giảm tiền mặt')}
                     className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-semibold"
                   >
                     <option value="Phần trăm">Chiết khấu theo phần trăm (%)</option>
                     <option value="Giảm tiền mặt">Khấu trừ tiền mặt trực tiếp (VND)</option>
-                    <option value="Đồng giá">Đồng giá kịch sàn (VND)</option>
                   </select>
                 </div>
 
@@ -603,8 +602,13 @@ export default function PromotionManagement({
                     type="number"
                     required
                     min="1"
+                    max={newType === 'Phần trăm' ? 100 : undefined}
                     value={newValue}
-                    onChange={(e) => setNewValue(Math.max(1, Number(e.target.value) || 0))}
+                    onChange={(e) => {
+                      const raw = Number(e.target.value) || 0;
+                      const nextValue = newType === 'Phần trăm' ? Math.min(100, Math.max(1, raw)) : Math.max(1, raw);
+                      setNewValue(nextValue);
+                    }}
                     className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-mono font-bold"
                   />
                 </div>
@@ -730,12 +734,11 @@ export default function PromotionManagement({
                   <label className="block text-[10px] font-bold text-gray-500 uppercase">Hình thức giảm</label>
                   <select
                     value={editType}
-                    onChange={(e) => setEditType(e.target.value as any)}
+                    onChange={(e) => setEditType(e.target.value as 'Phần trăm' | 'Giảm tiền mặt')}
                     className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-semibold"
                   >
                     <option value="Phần trăm">Chiết khấu theo phần trăm (%)</option>
                     <option value="Giảm tiền mặt">Khấu trừ tiền mặt trực tiếp (VND)</option>
-                    <option value="Đồng giá">Đồng giá kịch sàn (VND)</option>
                   </select>
                 </div>
 
@@ -745,8 +748,13 @@ export default function PromotionManagement({
                     type="number"
                     required
                     min="1"
+                    max={editType === 'Phần trăm' ? 100 : undefined}
                     value={editValue}
-                    onChange={(e) => setEditValue(Math.max(1, Number(e.target.value) || 0))}
+                    onChange={(e) => {
+                      const raw = Number(e.target.value) || 0;
+                      const nextValue = editType === 'Phần trăm' ? Math.min(100, Math.max(1, raw)) : Math.max(1, raw);
+                      setEditValue(nextValue);
+                    }}
                     className="block w-full border border-gray-300 rounded-lg p-2 bg-white text-gray-950 font-mono font-bold"
                   />
                 </div>

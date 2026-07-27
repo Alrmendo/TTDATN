@@ -746,6 +746,7 @@ export default function App() {
                       onUpdateProduct={handleUpdateProduct} 
                       onDeleteProduct={handleDeleteProduct}
                       onSearch={handleSearchProducts}
+                      onRefreshCategories={loadCategories}
                     />
                   )}
                   {activeTab === 'Đơn nhập hàng' && (

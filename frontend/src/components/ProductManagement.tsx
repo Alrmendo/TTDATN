@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { Product, Category } from '../types';
-import { Search, Plus, Filter, Trash2, Edit, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, Filter, Trash2, Edit, ChevronLeft, ChevronRight, Tags } from 'lucide-react';
+import { createCategory, updateCategory } from '../services/category.service';
 
 interface ProductManagementProps {
   products: Product[];
@@ -12,11 +13,12 @@ interface ProductManagementProps {
     id: string,
     data: Partial<Product>
   ) => Promise<void>;
+  onRefreshCategories?: () => Promise<void> | void;
   // Let's add an optional call back to toggle status
   onToggleStatus?: (id: string) => void;
 }
 
-export default function ProductManagement({ products, categories, onAddProduct, onDeleteProduct, onSearch, onUpdateProduct }: ProductManagementProps) {
+export default function ProductManagement({ products, categories, onAddProduct, onDeleteProduct, onSearch, onUpdateProduct, onRefreshCategories }: ProductManagementProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Tất cả');
   const [isAdding, setIsAdding] = useState(false);
@@ -33,6 +35,13 @@ export default function ProductManagement({ products, categories, onAddProduct, 
   const [isEditing, setIsEditing] = useState(false);
   const [editingProductId, setEditingProductId] = useState('');
 
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [selectedCategoryForEdit, setSelectedCategoryForEdit] = useState('');
+  const [categoryNameInput, setCategoryNameInput] = useState('');
+  const [categoryDescriptionInput, setCategoryDescriptionInput] = useState('');
+  const [categoryFormError, setCategoryFormError] = useState('');
+  const [categoryFormSuccess, setCategoryFormSuccess] = useState('');
+
   const [editName, setEditName] = useState('');
   const [editCategoryId, setEditCategoryId] = useState('');
   const [editPrice, setEditPrice] = useState(0);
@@ -46,6 +55,87 @@ export default function ProductManagement({ products, categories, onAddProduct, 
       setCategoryId(categories[0].id);
     }
   }, [categories]);
+
+  const openCategoryModal = () => {
+    setIsCategoryModalOpen(true);
+    setCategoryFormError('');
+    setCategoryFormSuccess('');
+    setSelectedCategoryForEdit('');
+    setCategoryNameInput('');
+    setCategoryDescriptionInput('');
+  };
+
+  const handleCategorySelection = (value: string) => {
+    setSelectedCategoryForEdit(value);
+
+    const selected = categories.find((c) => c.id === value);
+    if (selected) {
+      setCategoryNameInput(selected.categoryName ?? '');
+      setCategoryDescriptionInput(selected.description ?? '');
+    } else {
+      setCategoryNameInput('');
+      setCategoryDescriptionInput('');
+    }
+  };
+
+  const handleCreateCategory = async (e: FormEvent) => {
+    e.preventDefault();
+
+    const trimmedName = categoryNameInput.trim();
+    if (!trimmedName) {
+      setCategoryFormError('Tên danh mục là bắt buộc.');
+      return;
+    }
+
+    try {
+      const createdCategory = await createCategory({
+        categoryName: trimmedName,
+        description: categoryDescriptionInput.trim() || null,
+      });
+
+      setCategoryFormSuccess(`Đã tạo danh mục "${createdCategory.categoryName}".`);
+      setCategoryFormError('');
+      setSelectedCategoryForEdit(createdCategory.id);
+      setCategoryNameInput(createdCategory.categoryName);
+      setCategoryDescriptionInput(createdCategory.description ?? '');
+      await onRefreshCategories?.();
+    } catch {
+      setCategoryFormError('Không thể tạo danh mục mới. Vui lòng thử lại.');
+      setCategoryFormSuccess('');
+    }
+  };
+
+  const handleSaveCategoryEdit = async (e: FormEvent) => {
+    e.preventDefault();
+
+    const trimmedName = categoryNameInput.trim();
+    if (!selectedCategoryForEdit) {
+      setCategoryFormError('Vui lòng chọn một danh mục để chỉnh sửa.');
+      return;
+    }
+
+    if (!trimmedName) {
+      setCategoryFormError('Tên danh mục là bắt buộc.');
+      return;
+    }
+
+    try {
+      const updatedCategory = await updateCategory(selectedCategoryForEdit, {
+        categoryName: trimmedName,
+        description: categoryDescriptionInput.trim() || null,
+      });
+
+      setCategoryFormSuccess(`Đã lưu chỉnh sửa cho "${updatedCategory.categoryName}".`);
+      setCategoryFormError('');
+      setSelectedCategoryForEdit(updatedCategory.id);
+      setCategoryNameInput(updatedCategory.categoryName);
+      setCategoryDescriptionInput(updatedCategory.description ?? '');
+      await onRefreshCategories?.();
+    } catch {
+      setCategoryFormError('Không thể lưu chỉnh sửa danh mục. Vui lòng thử lại.');
+      setCategoryFormSuccess('');
+    }
+  };
 
   const categoryOptions = ['Tất cả', ...Array.from(new Set(products.map(p => p.category)))];
 
@@ -185,16 +275,110 @@ export default function ProductManagement({ products, categories, onAddProduct, 
             </select>
           </div>
 
-          <button
-            id="btn-add-product-sp"
-            onClick={() => setIsAdding(!isAdding)}
-            className="flex items-center space-x-1.5 px-4 py-2 text-xs font-semibold bg-[#3B82F6] hover:bg-blue-600 text-white rounded-lg transition shadow-xs"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Thêm sản phẩm</span>
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              id="btn-edit-categories-sp"
+              onClick={openCategoryModal}
+              className="flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 rounded-lg transition"
+            >
+              <Tags className="w-4 h-4" />
+              <span>Chỉnh sửa danh mục</span>
+            </button>
+
+            <button
+              id="btn-add-product-sp"
+              onClick={() => setIsAdding(!isAdding)}
+              className="flex items-center space-x-1.5 px-4 py-2 text-xs font-semibold bg-[#3B82F6] hover:bg-blue-600 text-white rounded-lg transition shadow-xs"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Thêm sản phẩm</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {isCategoryModalOpen && (
+        <div className="bg-white p-6 rounded-xl border border-blue-100 shadow-md max-w-2xl animate-fadeIn transition duration-200">
+          <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+            <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Quản lý danh mục</h3>
+            <button
+              onClick={() => setIsCategoryModalOpen(false)}
+              className="text-[#3B82F6] hover:text-blue-700 font-semibold text-xs"
+            >
+              Đóng (X)
+            </button>
+          </div>
+
+          <form className="space-y-4 text-xs">
+            <div className="space-y-1">
+              <label className="block font-semibold text-gray-700">Chọn danh mục hiện có</label>
+              <select
+                value={selectedCategoryForEdit}
+                onChange={(e) => handleCategorySelection(e.target.value)}
+                className="block w-full border border-gray-300 rounded-md p-2 bg-white"
+              >
+                <option value="">-- Chọn để chỉnh sửa --</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.categoryName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block font-semibold text-gray-700">Tên danh mục</label>
+              <input
+                type="text"
+                required
+                value={categoryNameInput}
+                onChange={(e) => setCategoryNameInput(e.target.value)}
+                className="block w-full border border-gray-300 rounded-md p-2"
+                placeholder="Nhập tên danh mục"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block font-semibold text-gray-700">Mô tả danh mục</label>
+              <textarea
+                value={categoryDescriptionInput}
+                onChange={(e) => setCategoryDescriptionInput(e.target.value)}
+                className="block w-full border border-gray-300 rounded-md p-2 min-h-[90px]"
+                placeholder="Nhập mô tả danh mục"
+              />
+            </div>
+
+            {categoryFormError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-700">
+                {categoryFormError}
+              </div>
+            )}
+
+            {categoryFormSuccess && (
+              <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-green-700">
+                {categoryFormSuccess}
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:justify-end space-y-2 sm:space-y-0 sm:space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={(e) => handleCreateCategory(e)}
+                className="px-4 py-2 bg-[#3B82F6] hover:bg-blue-600 font-semibold text-white rounded-lg shadow-xs"
+              >
+                Tạo danh mục mới
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handleSaveCategoryEdit(e)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-semibold"
+              >
+                Lưu chỉnh sửa
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Add Product Modular drawer */}
       {isAdding && (
@@ -257,18 +441,6 @@ export default function ProductManagement({ products, categories, onAddProduct, 
                 min="0"
                 value={cost}
                 onChange={(e) => setCost(Number(e.target.value))}
-                className="block w-full border border-gray-300 rounded-md p-2"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="block font-semibold text-gray-700">Số lượng tồn ban đầu</label>
-              <input
-                type="number"
-                required
-                min="0"
-                value={stock}
-                onChange={(e) => setStock(Number(e.target.value))}
                 className="block w-full border border-gray-300 rounded-md p-2"
               />
             </div>
@@ -352,18 +524,6 @@ export default function ProductManagement({ products, categories, onAddProduct, 
                 min="0"
                 value={editCost}
                 onChange={(e) => setEditCost(Number(e.target.value))}
-                className="block w-full border border-gray-300 rounded-md p-2"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="block font-semibold text-gray-700">Số lượng tồn ban đầu</label>
-              <input
-                type="number"
-                required
-                min="0"
-                value={stock}
-                onChange={(e) => setStock(Number(e.target.value))}
                 className="block w-full border border-gray-300 rounded-md p-2"
               />
             </div>
