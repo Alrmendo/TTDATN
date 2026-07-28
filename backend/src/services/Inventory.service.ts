@@ -16,9 +16,11 @@ export class InventoryError extends Error {
 const toStockDTO = (rec: any) => {
   const product = rec.Product ?? rec.product ?? null;
   const category = product?.category ?? product?.Category ?? null;
+  const store = rec.Store ?? rec.store ?? null;
   return {
     id: rec.id,
     storeId: rec.storeId,
+    storeName: store?.storeName ?? null,   // chỉ có giá trị khi query include Store (chế độ tổng thể)
     productId: rec.productId,
     productName: product?.productName ?? null,
     sku: product?.sku ?? null,
@@ -110,19 +112,29 @@ export class InventoryService {
   }
 
   /**
-   * Lấy toàn bộ tồn kho của 1 chi nhánh — dùng cho màn Quản lý kho.
+   * Lấy tồn kho — dùng cho màn Quản lý kho.
+   * - storeId truyền vào: tồn kho của 1 chi nhánh cụ thể (như cũ).
+   * - storeId bỏ trống: tồn kho TỔNG THỂ toàn hệ thống, gộp mọi chi nhánh
+   *   (chỉ Manager mới được phép gọi ở chế độ này — controller chịu trách
+   *   nhiệm ép storeId cho WarehouseStaff, service không tự kiểm tra role).
    */
-  static async getStockByStore(storeId: string) {
+  static async getStockByStore(storeId?: string) {
+    const where: any = {};
+    if (storeId) where.storeId = storeId;
+
     const records = await Inventory.findAll({
-      where: { storeId },
+      where,
       include: [
         {
           model: Product,
           attributes: ['id', 'productName', 'sku', 'price', 'costPrice', 'isActive'],
-          include: [{ model: Category, as: 'category', attributes: ['id', 'categoryName'] }],
+          include: [{ model: Category, attributes: ['id', 'categoryName'] }],
         },
+        { model: Store, attributes: ['id', 'storeName'] },
       ],
-      order: [['lastUpdated', 'DESC']],
+      order: storeId
+        ? [['lastUpdated', 'DESC']]
+        : [[Store, 'storeName', 'ASC'], ['lastUpdated', 'DESC']],
     });
     return records.map(toStockDTO);
   }

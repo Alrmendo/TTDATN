@@ -3,9 +3,11 @@ import { InventoryService, InventoryError } from '../services/Inventory.service'
 
 /**
  * GET /api/inventory?storeId=
- * - Manager: phải truyền storeId (xem tồn kho theo từng chi nhánh cụ thể)
+ * - Manager: storeId optional — truyền vào để xem theo 1 chi nhánh cụ thể,
+ *   bỏ trống để xem tồn kho TỔNG THỂ gộp mọi chi nhánh.
  * - WarehouseStaff: luôn bị ép về storeId của chính mình (req.user.storeId),
- *   bỏ qua query param nếu có truyền khác — tránh xem chéo tồn kho chi nhánh khác.
+ *   bỏ qua query param nếu có truyền khác — tránh xem chéo tồn kho chi nhánh khác,
+ *   và không được xem chế độ tổng thể.
  */
 export const getInventoryByStore = async (req: Request, res: Response) => {
   try {
@@ -13,11 +15,11 @@ export const getInventoryByStore = async (req: Request, res: Response) => {
 
     if (req.user?.role === 'WarehouseStaff') {
       storeId = req.user.storeId ?? undefined;
+      if (!storeId) {
+        return res.status(400).json({ message: 'storeId là bắt buộc' });
+      }
     }
-
-    if (!storeId) {
-      return res.status(400).json({ message: 'storeId là bắt buộc' });
-    }
+    // Manager: storeId để trống hợp lệ => InventoryService gộp tồn kho toàn hệ thống
 
     const data = await InventoryService.getStockByStore(storeId);
     return res.json(data);

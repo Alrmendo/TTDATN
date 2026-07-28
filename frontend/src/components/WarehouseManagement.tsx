@@ -116,9 +116,15 @@ export default function WarehouseManagement({
   const isManager = userRole === 'Quản lý';
   const isWarehouseStaff = userRole === 'Nhân viên kho' || userRole === 'WarehouseStaff';
 
+  // Giá trị đặc biệt cho dropdown chọn chi nhánh: xem tồn kho gộp mọi chi nhánh.
+  // Chỉ Manager mới được chọn giá trị này (WarehouseStaff bị khoá theo chi nhánh của mình).
+  const ALL_STORES = 'ALL';
+
   // ===== Tồn kho thực (API) =====
+  // Manager mặc định vào màn Tồn kho sẽ thấy tổng thể toàn hệ thống trước;
+  // WarehouseStaff luôn cố định theo chi nhánh đang làm việc.
   const [selectedStoreId, setSelectedStoreId] = useState<string>(
-    isWarehouseStaff ? (currentUserStoreId || stores[0]?.id || '') : (stores[0]?.id || '')
+    isWarehouseStaff ? (currentUserStoreId || stores[0]?.id || '') : ALL_STORES
   );
   const [apiStock, setApiStock] = useState<ApiStockItem[]>([]);
   const [isLoadingStock, setIsLoadingStock] = useState(true);
@@ -130,7 +136,7 @@ export default function WarehouseManagement({
     setIsLoadingStock(true);
     setStockFetchError('');
     try {
-      const data = await fetchStockByStore(storeId);
+      const data = await fetchStockByStore(storeId === ALL_STORES ? undefined : storeId);
       setApiStock(data);
     } catch (err) {
       setStockFetchError(err instanceof Error ? err.message : 'Không thể tải tồn kho');
@@ -488,10 +494,12 @@ export default function WarehouseManagement({
   // Handle Adjustment Submission — gọi PUT /api/inventory/:productId (đặt số tuyệt đối)
   const handleSaveStockAdjustment = async (e: FormEvent) => {
     e.preventDefault();
-    if (!editingStockItem || !selectedStoreId) return;
+    if (!editingStockItem) return;
     setIsSavingStock(true);
     try {
-      const updated = await setInventoryQuantity(editingStockItem.productId, selectedStoreId, newStockVal);
+      // Dùng storeId thật của chính bản ghi đang sửa (không phải dropdown đang chọn),
+      // vì ở chế độ Tổng thể mỗi dòng có thể thuộc chi nhánh khác nhau.
+      const updated = await setInventoryQuantity(editingStockItem.productId, editingStockItem.storeId, newStockVal);
       setApiStock(prev => prev.map(item =>
         item.productId === editingStockItem.productId
           ? { ...item, quantity: updated.quantity, lastUpdated: updated.lastUpdated }
@@ -560,6 +568,9 @@ export default function WarehouseManagement({
               disabled={isWarehouseStaff}
               className="flex-1 border border-gray-300 rounded-lg p-2 text-xs font-bold bg-white text-gray-900 focus:outline-none disabled:bg-gray-50 disabled:text-gray-500"
             >
+              {isManager && (
+                <option value={ALL_STORES}>🏢 Tổng thể tất cả chi nhánh</option>
+              )}
               {stores.map(s => (
                 <option key={s.id} value={s.id}>{s.storeName}</option>
               ))}
@@ -591,7 +602,9 @@ export default function WarehouseManagement({
               <div className="text-xs">
                 <span className="block text-gray-500 font-medium">Tổng sản phẩm kinh doanh</span>
                 <span className="text-base font-black text-gray-950 font-mono mt-0.5 block">{isLoadingStock ? '—' : `${totalDistinctProducts} danh mục SKU`}</span>
-                <span className="text-[10px] text-gray-400 font-medium mt-1 block">Tại chi nhánh đang chọn</span>
+                <span className="text-[10px] text-gray-400 font-medium mt-1 block">
+                  {selectedStoreId === ALL_STORES ? 'Gộp toàn hệ thống' : 'Tại chi nhánh đang chọn'}
+                </span>
               </div>
             </div>
 
@@ -677,6 +690,9 @@ export default function WarehouseManagement({
                   <tr>
                     <th scope="col" className="px-5 py-3.5">Mã SP</th>
                     <th scope="col" className="px-5 py-3.5">Tên sản phẩm</th>
+                    {selectedStoreId === ALL_STORES && (
+                      <th scope="col" className="px-5 py-3.5">Chi nhánh</th>
+                    )}
                     <th scope="col" className="px-5 py-3.5">Danh mục sản phẩm</th>
                     <th scope="col" className="px-5 py-3.5 text-center">Tồn kho thực tế</th>
                     <th scope="col" className="px-5 py-3.5 text-center">Ngưỡng cảnh báo</th>
@@ -722,6 +738,11 @@ export default function WarehouseManagement({
 
                         {/* Product Name */}
                         <td className="px-5 py-3.5 text-gray-950 font-bold text-xs">{item.productName}</td>
+
+                        {/* Branch (chỉ hiện ở chế độ Tổng thể) */}
+                        {selectedStoreId === ALL_STORES && (
+                          <td className="px-5 py-3.5 text-gray-700 font-bold">{item.storeName || '—'}</td>
+                        )}
 
                         {/* Category */}
                         <td className="px-5 py-3.5 text-gray-500 font-semibold">{item.categoryName || '—'}</td>
