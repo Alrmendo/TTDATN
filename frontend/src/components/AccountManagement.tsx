@@ -332,7 +332,7 @@ export default function AccountManagement({ stores: _stores }: AccountManagement
         <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-3xs flex items-center space-x-3.5">
           <div className="p-3 bg-amber-50 text-amber-600 rounded-lg"><ShieldAlert className="w-4 h-4" /></div>
           <div>
-            <span className="block text-[10px] text-gray-400 font-bold uppercase">Nhân viên quản mìn kho</span>
+            <span className="block text-[10px] text-gray-400 font-bold uppercase">Nhân viên quản kho</span>
             <span className="text-sm font-extrabold text-gray-950 font-mono mt-0.5 block">
               {apiAccounts.filter(a => a.role === 'WarehouseStaff').length}
             </span>
