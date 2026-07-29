@@ -128,7 +128,7 @@ export class InventoryService {
         {
           model: Product,
           attributes: ['id', 'productName', 'sku', 'price', 'costPrice', 'isActive'],
-          include: [{ model: Category, attributes: ['id', 'categoryName'] }],
+          include: [{ model: Category, as: 'category', attributes: ['id', 'categoryName'] }],
         },
         { model: Store, attributes: ['id', 'storeName'] },
       ],
