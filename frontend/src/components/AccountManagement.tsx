@@ -39,7 +39,7 @@ export default function AccountManagement({ stores: _stores }: AccountManagement
 
   // Search & filter
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedRole, setSelectedRole] = useState<'Tất cả' | 'Nhân viên bán hàng' | 'Nhân viên kho' | 'Quản lý'>('Tất cả');
+  const [selectedRole, setSelectedRole] = useState<'Tất cả' | 'Nhân viên bán hàng' | 'Nhân viên kho' | 'Quản lý' | 'Quản lý chi nhánh'>('Tất cả');
   const [selectedStoreId, setSelectedStoreId] = useState<string>('Tất cả');
 
   // Pagination
@@ -117,7 +117,7 @@ export default function AccountManagement({ stores: _stores }: AccountManagement
       acc.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole =
       selectedRole === 'Tất cả' ||
-      acc.role === roleLabelToEnum[selectedRole as 'Quản lý' | 'Nhân viên bán hàng' | 'Nhân viên kho'];
+      acc.role === roleLabelToEnum[selectedRole as 'Quản lý' | 'Nhân viên bán hàng' | 'Nhân viên kho' | 'Quản lý chi nhánh'];
     const matchesStore = selectedStoreId === 'Tất cả' || acc.storeId === selectedStoreId;
     return matchesSearch && matchesRole && matchesStore;
   });
@@ -369,6 +369,7 @@ export default function AccountManagement({ stores: _stores }: AccountManagement
               <option value="Tất cả">Tất cả vai trò</option>
               <option value="Nhân viên bán hàng">Nhân viên bán hàng</option>
               <option value="Nhân viên kho">Nhân viên kho</option>
+              <option value="Quản lý chi nhánh">Quản lý chi nhánh</option>
               <option value="Quản lý">Quản lý hệ thống</option>
             </select>
           </div>

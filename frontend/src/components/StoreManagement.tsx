@@ -85,6 +85,8 @@ export default function StoreManagement({ userRole }: StoreManagementProps) {
   const activeEmployeeCount = (storeId: string) =>
     apiAccounts.filter(acc => acc.storeId === storeId && acc.isActive).length;
 
+  const totalActiveEmployees = apiAccounts.filter(acc => acc.isActive && acc.storeId).length;
+
   const filteredStores = apiStores.filter(store =>
     store.storeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     store.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -214,7 +216,7 @@ export default function StoreManagement({ userRole }: StoreManagementProps) {
           </div>
           <div className="text-xs">
             <span className="block text-gray-500 font-semibold">Tổng lực lượng nhân sự</span>
-            <span className="text-sm font-black text-gray-950 font-mono mt-0.5 block">0 nhân viên</span>
+            <span className="text-sm font-black text-gray-950 font-mono mt-0.5 block">{totalActiveEmployees} nhân viên</span>
             <span className="text-[10px] text-gray-400 font-medium mt-1 block">Xem chi tiết tại module Tài khoản</span>
           </div>
         </div>
