@@ -58,7 +58,7 @@ export default function AccountManagement({ stores: _stores }: AccountManagement
   const [formEmail, setFormEmail] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [showFormPassword, setShowFormPassword] = useState(false);
-  const [formRole, setFormRole] = useState<'Staff' | 'WarehouseStaff' | 'Manager'>('Staff');
+  const [formRole, setFormRole] = useState<'Staff' | 'WarehouseStaff' | 'Manager' | 'BranchManager'>('Staff');
   const [formStoreId, setFormStoreId] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formSalary, setFormSalary] = useState('');
@@ -153,7 +153,7 @@ export default function AccountManagement({ stores: _stores }: AccountManagement
       setFormError('Mật khẩu phải có ít nhất 6 ký tự.');
       return;
     }
-    if ((formRole === 'Staff' || formRole === 'WarehouseStaff') && !formStoreId) {
+    if ((formRole === 'Staff' || formRole === 'WarehouseStaff' || formRole === 'BranchManager') && !formStoreId) {
       setFormError('Vui lòng chọn chi nhánh cho vai trò này.');
       return;
     }
@@ -639,6 +639,7 @@ export default function AccountManagement({ stores: _stores }: AccountManagement
                 >
                   <option value="Staff">Nhân viên bán hàng (Quyền hạn POS, Tra cứu khách)</option>
                   <option value="WarehouseStaff">Nhân viên kho (Quyền hạn Nhập, Xuất, Tồn hàng, Điều chuyển)</option>
+                  <option value="BranchManager">Quản lý chi nhánh (Xác nhận đặt hàng với NCC)</option>
                   <option value="Manager">Quản lý hệ thống (Toàn bộ quyền lực điều khiển)</option>
                 </select>
               </div>

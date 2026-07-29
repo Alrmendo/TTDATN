@@ -3,7 +3,7 @@ import { Op } from 'sequelize';
 import bcrypt from 'bcrypt';
 import { User } from '../models';
 
-const VALID_ROLES = ['Manager', 'Staff', 'WarehouseStaff'] as const;
+const VALID_ROLES = ['Manager', 'Staff', 'WarehouseStaff', 'BranchManager'] as const;
 type UserRole = (typeof VALID_ROLES)[number];
 
 export const listAccounts = async (req: Request, res: Response): Promise<void> => {
@@ -56,7 +56,12 @@ export const createAccount = async (req: Request, res: Response): Promise<void> 
     }
 
     if (!VALID_ROLES.includes(role as UserRole)) {
-      res.status(400).json({ message: 'Role không hợp lệ. Chỉ chấp nhận: Manager, Staff, WarehouseStaff' });
+      res.status(400).json({ message: 'Role không hợp lệ. Chỉ chấp nhận: Manager, Staff, WarehouseStaff, BranchManager' });
+      return;
+    }
+
+    if (role === 'BranchManager' && !storeId) {
+      res.status(400).json({ message: 'BranchManager phải được gán storeId (chi nhánh phụ trách)' });
       return;
     }
 
