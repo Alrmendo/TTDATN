@@ -5,6 +5,8 @@ import {
   Building2, Edit3, Info,
 } from 'lucide-react';
 import { getStores, createStore, updateStore, deactivateStore } from '../services/store.service';
+import { getAccounts } from '../services/account.service';
+import { ApiAccount } from '../types';
 
 interface ApiStore {
   id: string;
@@ -23,6 +25,7 @@ export default function StoreManagement({ userRole }: StoreManagementProps) {
   const isManager = userRole === 'Quản lý' || userRole === 'Manager';
 
   const [apiStores, setApiStores] = useState<ApiStore[]>([]);
+  const [apiAccounts, setApiAccounts] = useState<ApiAccount[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +68,22 @@ export default function StoreManagement({ userRole }: StoreManagementProps) {
   useEffect(() => {
     fetchStores();
   }, []);
+
+  // Số nhân viên active mỗi chi nhánh — đếm từ GET /api/accounts (chỉ gọi 1 lần khi mount)
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      try {
+        const res = await getAccounts();
+        setApiAccounts(res.data);
+      } catch {
+        // im lặng — chỉ ảnh hưởng con số "Số nhân viên" hiển thị, không chặn UI chính
+      }
+    };
+    fetchAccounts();
+  }, []);
+
+  const activeEmployeeCount = (storeId: string) =>
+    apiAccounts.filter(acc => acc.storeId === storeId && acc.isActive).length;
 
   const filteredStores = apiStores.filter(store =>
     store.storeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -282,7 +301,7 @@ export default function StoreManagement({ userRole }: StoreManagementProps) {
               <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100 text-xs">
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-gray-100">
                   <span className="block text-[9px] text-gray-400 font-bold uppercase tracking-wider">Số nhân viên</span>
-                  <span className="text-xs font-black text-gray-950 font-mono">0 nhân viên</span>
+                  <span className="text-xs font-black text-gray-950 font-mono">{activeEmployeeCount(store.id)} nhân viên</span>
                 </div>
                 <div className="bg-emerald-50/40 p-2.5 rounded-xl border border-emerald-100/40">
                   <span className="block text-[9px] text-emerald-600 font-bold uppercase tracking-wider">Doanh thu tháng</span>
@@ -337,7 +356,7 @@ export default function StoreManagement({ userRole }: StoreManagementProps) {
                     </td>
                     <td className="px-5 py-3.5 text-center">
                       <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold font-mono bg-blue-50 text-[#3B82F6] border border-blue-100/50">
-                        0
+                        {activeEmployeeCount(store.id)}
                       </span>
                     </td>
                     <td className="px-5 py-3.5 text-center font-mono">
@@ -618,7 +637,7 @@ export default function StoreManagement({ userRole }: StoreManagementProps) {
               <div>
                 <span className="block text-[9px] text-gray-400 uppercase font-black">Số nhân viên</span>
                 <span className="font-extrabold text-gray-750 block mt-1">
-                  <span className="font-mono text-purple-600 font-black">0</span> nhân sự
+                  <span className="font-mono text-purple-600 font-black">{activeEmployeeCount(selectedStore.id)}</span> nhân sự
                 </span>
               </div>
             </div>
