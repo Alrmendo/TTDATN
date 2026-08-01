@@ -20,7 +20,7 @@ import {
 
 // ─── API helpers (Đơn nhập hàng) ───────────────────────────────────────────────
 
-const API = (import.meta as any).env?.VITE_API_URL ?? 'http://localhost:5000';
+import { API_BASE } from '../config/api';
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem('token');
@@ -226,7 +226,7 @@ export default function WarehouseManagement({
       const apiStatus = STATUS_MAP_REVERSE[poStatusFilter];
       if (apiStatus) params.set('status', apiStatus);
       if (poSearch.trim()) params.set('search', poSearch.trim());
-      const res = await fetch(`${API}/api/purchase-orders?${params}`, { headers: authHeaders() });
+      const res = await fetch(`${API_BASE}/purchase-orders?${params}`, { headers: authHeaders() });
       if (!res.ok) throw new Error((await res.json()).message ?? 'Lỗi tải dữ liệu');
       const orders: ApiPurchaseOrder[] = await res.json();
       setApiOrders(orders);
@@ -236,7 +236,7 @@ export default function WarehouseManagement({
       const paymentResults = await Promise.all(
         completedOrders.map(async order => {
           try {
-            const paymentRes = await fetch(`${API}/api/purchase-orders/${order.id}/payments`, {
+            const paymentRes = await fetch(`${API_BASE}/purchase-orders/${order.id}/payments`, {
               headers: authHeaders(),
             });
             if (!paymentRes.ok) return null;
@@ -264,7 +264,7 @@ export default function WarehouseManagement({
   // ─── Fetch stores (Manager) ──────────────────────────────────────────────────
   useEffect(() => {
     if (!isManager) return;
-    fetch(`${API}/api/stores`, { headers: authHeaders() })
+    fetch(`${API_BASE}/stores`, { headers: authHeaders() })
       .then(r => r.json()).then(setApiStores).catch(() => {});
   }, [isManager]);
 
@@ -274,7 +274,7 @@ export default function WarehouseManagement({
     const t = setTimeout(async () => {
       setProductSearchLoading(true);
       try {
-        const res = await fetch(`${API}/api/products/search?q=${encodeURIComponent(productSearch)}`, { headers: authHeaders() });
+        const res = await fetch(`${API_BASE}/products/search?q=${encodeURIComponent(productSearch)}`, { headers: authHeaders() });
         if (res.ok) setProductResults(await res.json());
       } finally { setProductSearchLoading(false); }
     }, 300);
@@ -290,8 +290,8 @@ export default function WarehouseManagement({
     setDetailLoading(true);
     try {
       const [orderRes, paymentRes] = await Promise.all([
-        fetch(`${API}/api/purchase-orders/${order.id}`, { headers: authHeaders() }),
-        fetch(`${API}/api/purchase-orders/${order.id}/payments`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/purchase-orders/${order.id}`, { headers: authHeaders() }),
+        fetch(`${API_BASE}/purchase-orders/${order.id}/payments`, { headers: authHeaders() }),
       ]);
       if (!orderRes.ok || !paymentRes.ok) throw new Error();
       const full: ApiPurchaseOrder = await orderRes.json();
@@ -325,7 +325,7 @@ export default function WarehouseManagement({
     setConfirmLoading(true);
     setConfirmError('');
     try {
-      const res = await fetch(`${API}/api/purchase-orders/${selectedPO.id}/confirm`, {
+      const res = await fetch(`${API_BASE}/purchase-orders/${selectedPO.id}/confirm`, {
         method: 'PUT',
         headers: authHeaders(),
         body: JSON.stringify({ receivedItems }),
@@ -349,7 +349,7 @@ export default function WarehouseManagement({
     setPaymentLoading(true);
     setConfirmError('');
     try {
-      const res = await fetch(`${API}/api/purchase-orders/${selectedPO.id}/payments`, {
+      const res = await fetch(`${API_BASE}/purchase-orders/${selectedPO.id}/payments`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ amount: Number(paymentAmount) }),
@@ -375,7 +375,7 @@ export default function WarehouseManagement({
   const handleCancelOrder = async (orderId: string) => {
     if (!confirm('Xác nhận huỷ đơn nhập hàng này?')) return;
     try {
-      const res = await fetch(`${API}/api/purchase-orders/${orderId}/cancel`, {
+      const res = await fetch(`${API_BASE}/purchase-orders/${orderId}/cancel`, {
         method: 'PUT', headers: authHeaders(),
       });
       if (!res.ok) { alert((await res.json()).message ?? 'Huỷ đơn thất bại'); return; }
@@ -387,7 +387,7 @@ export default function WarehouseManagement({
   const fetchSuppliers = async () => {
     try {
       const res = await fetch(
-        `${API}/api/suppliers`,
+        `${API_BASE}/suppliers`,
         {
           headers: authHeaders(),
         }
@@ -427,7 +427,7 @@ export default function WarehouseManagement({
     setCreateLoading(true);
     setCreateError('');
     try {
-      const res = await fetch(`${API}/api/purchase-orders`, {
+      const res = await fetch(`${API_BASE}/purchase-orders`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({
