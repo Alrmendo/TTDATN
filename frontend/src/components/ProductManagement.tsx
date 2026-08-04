@@ -20,7 +20,7 @@ interface ProductManagementProps {
 
 export default function ProductManagement({ products, categories, onAddProduct, onDeleteProduct, onSearch, onUpdateProduct, onRefreshCategories }: ProductManagementProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Tất cả');
+  const [selectedCategory, setSelectedCategory] = useState('__all__');
   const [isAdding, setIsAdding] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
@@ -137,7 +137,13 @@ export default function ProductManagement({ products, categories, onAddProduct, 
     }
   };
 
-  const categoryOptions = ['Tất cả', ...Array.from(new Set(products.map(p => p.category)))];
+  const categoryOptions = [
+    { id: '__all__', label: 'Tất cả' },
+    ...categories.map((category) => ({
+      id: category.id,
+      label: category.categoryName,
+    })),
+  ];
 
   const handleSearchChange = (val: string) => {
     setSearchTerm(val);
@@ -150,11 +156,8 @@ export default function ProductManagement({ products, categories, onAddProduct, 
     setCurrentPage(1);
   };
 
-  const filteredProducts = products.filter(p => {
-    return (
-      selectedCategory === 'Tất cả' ||
-      p.category === selectedCategory
-    );
+  const filteredProducts = products.filter((p) => {
+    return selectedCategory === '__all__' || p.categoryId === selectedCategory;
   });
 
   // Pagination calculation
@@ -269,8 +272,10 @@ export default function ProductManagement({ products, categories, onAddProduct, 
               onChange={(e) => handleCategoryChange(e.target.value)}
               className="bg-transparent font-bold focus:outline-none text-xs text-gray-700 cursor-pointer"
             >
-              {categoryOptions.map(c => (
-                <option key={c} value={c}>{c}</option>
+              {categoryOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
               ))}
             </select>
           </div>

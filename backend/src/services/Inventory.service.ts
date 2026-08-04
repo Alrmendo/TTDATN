@@ -24,6 +24,7 @@ const toStockDTO = (rec: any) => {
     productId: rec.productId,
     productName: product?.productName ?? null,
     sku: product?.sku ?? null,
+    categoryId: product?.categoryId ?? category?.id ?? null,
     categoryName: category?.categoryName ?? null,   // real field name is categoryName
     price: product?.price != null ? Number(product.price) : null,
     costPrice: product?.costPrice != null ? Number(product.costPrice) : null,
@@ -127,7 +128,7 @@ export class InventoryService {
       include: [
         {
           model: Product,
-          attributes: ['id', 'productName', 'sku', 'price', 'costPrice', 'isActive'],
+          attributes: ['id', 'productName', 'sku', 'price', 'costPrice', 'isActive', 'categoryId'],
           include: [{ model: Category, as: 'category', attributes: ['id', 'categoryName'] }],
         },
         { model: Store, attributes: ['id', 'storeName'] },

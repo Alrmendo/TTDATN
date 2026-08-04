@@ -1,6 +1,7 @@
 import { useState, FormEvent, useEffect, useCallback } from 'react';
 import { Store } from '../types';
 import { fetchStockByStore, setInventoryQuantity, ApiStockItem } from '../services/inventoryApi';
+import { getCategories } from '../services/category.service';
 import {
   Boxes,
   AlertTriangle,
@@ -145,16 +146,36 @@ export default function WarehouseManagement({
     }
   };
 
+  const loadCategories = useCallback(async () => {
+    try {
+      const data = await getCategories();
+      const categories = data
+        .filter((category) => Boolean(category.categoryName))
+        .map((category) => ({
+          id: category.id,
+          label: category.categoryName,
+        }));
+      setCategoryOptions([{ id: '__all__', label: 'Tất cả' }, ...categories]);
+    } catch (err) {
+      console.error(err);
+      setCategoryOptions([{ id: '__all__', label: 'Tất cả' }]);
+    }
+  }, []);
+
   useEffect(() => {
     if (activeTab === 'Tồn kho') {
       loadStock(selectedStoreId);
+      loadCategories();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, selectedStoreId]);
+  }, [activeTab, selectedStoreId, loadCategories]);
 
   // Search & Filter state for Tồn kho
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Tất cả');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('__all__');
+  const [categoryOptions, setCategoryOptions] = useState<Array<{ id: string; label: string }>>([
+    { id: '__all__', label: 'Tất cả' },
+  ]);
 
   // Modal active states (điều chỉnh tồn kho thực tế — dùng dữ liệu API)
   const [editingStockItem, setEditingStockItem] = useState<ApiStockItem | null>(null);
@@ -480,16 +501,16 @@ export default function WarehouseManagement({
   const pendingOrdersCount = apiOrders.filter(o => o.status === 'pending' || o.status === 'ordered').length;
 
   // Filtered Products for the Tồn kho grid
-  const filteredProducts = apiStock.filter(item => {
+  const filteredProducts = apiStock.filter((item) => {
     const matchesSearch =
       (item.productName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.sku || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'Tất cả' || item.categoryName === selectedCategory;
+    const matchesCategory = selectedCategoryId === '__all__' || item.categoryId === selectedCategoryId;
     return matchesSearch && matchesCategory;
   });
 
-  // Unique categories list (bỏ qua sản phẩm chưa gán ngành hàng)
-  const categoriesList = Array.from(new Set(apiStock.map(item => item.categoryName).filter((c): c is string => !!c)));
+  // Category list from backend categories API, preserving duplicates by backend id
+  const categoriesList = categoryOptions.filter((category) => category.id !== '__all__');
 
   // Handle Adjustment Submission — gọi PUT /api/inventory/:productId (đặt số tuyệt đối)
   const handleSaveStockAdjustment = async (e: FormEvent) => {
@@ -662,13 +683,16 @@ export default function WarehouseManagement({
             {/* Category filter */}
             <div className="md:col-span-3">
               <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
+                value={selectedCategoryId}
+                onChange={(e) => {
+                  setSelectedCategoryId(e.target.value);
+                }}
                 className="block w-full border border-gray-300 rounded-lg p-2 text-xs font-semibold bg-white text-gray-900 focus:outline-none"
               >
-                <option value="Tất cả">Tất cả ngành hàng</option>
-                {categoriesList.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
+                {categoryOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
                 ))}
               </select>
             </div>

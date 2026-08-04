@@ -189,6 +189,7 @@ export interface ApiStockItem {
   productId: string;
   productName: string | null;
   sku: string | null;
+  categoryId: string | null;
   categoryName: string | null;
   price: number | null;
   costPrice: number | null;
