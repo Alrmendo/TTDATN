@@ -141,7 +141,6 @@ export default function BranchManagerOrders() {
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-gray-50/70 border-b border-gray-200 text-gray-500 font-bold uppercase tracking-wider text-[10px]">
-                <th className="py-3 px-4 font-black">Mã đơn</th>
                 <th className="py-3 px-4 font-black">Nhà cung cấp</th>
                 <th className="py-3 px-4 font-black">Ngày tạo</th>
                 <th className="py-3 px-4 font-black">Số mặt hàng</th>
@@ -153,14 +152,14 @@ export default function BranchManagerOrders() {
             <tbody className="divide-y divide-gray-150">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-gray-400">
+                  <td colSpan={6} className="py-12 text-center text-gray-400">
                     <Loader2 className="w-6 h-6 text-gray-300 mx-auto mb-2 animate-spin" />
                     <p className="text-xs font-bold">Đang tải dữ liệu...</p>
                   </td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 bg-white text-center text-gray-400 font-bold">
+                  <td colSpan={6} className="py-12 bg-white text-center text-gray-400 font-bold">
                     <Truck className="w-10 h-10 text-gray-300 mx-auto stroke-1 mb-2" />
                     <p className="text-xs font-bold text-gray-500">Chưa có đơn nhập hàng nào cho chi nhánh của bạn.</p>
                   </td>
@@ -171,7 +170,6 @@ export default function BranchManagerOrders() {
                   const canConfirmOrdered = po.status === 'pending';
                   return (
                     <tr key={po.id} className="hover:bg-gray-50/50 transition">
-                      <td className="py-3.5 px-4 font-bold text-[#3B82F6] font-mono">{po.id.slice(0, 8)}…</td>
                       <td className="py-3.5 px-4 font-bold text-gray-900">{po.Supplier?.supplierName ?? '—'}</td>
                       <td className="py-3.5 px-4 text-gray-500 font-mono">{fmtDate(po.createdAt)}</td>
                       <td className="py-3.5 px-4 text-gray-600 font-semibold">{po.details?.length ?? 0} sản phẩm</td>

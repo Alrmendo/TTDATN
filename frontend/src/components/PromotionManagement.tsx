@@ -367,7 +367,6 @@ export default function PromotionManagement({
           <table className="w-full text-left text-gray-600 border-collapse">
             <thead className="bg-gray-50 text-gray-500 uppercase tracking-widest text-[9px] font-bold border-b border-gray-100">
               <tr>
-                <th scope="col" className="px-5 py-3.5">Mã KM</th>
                 <th scope="col" className="px-5 py-3.5">Tên khuyến mãi</th>
                 <th scope="col" className="px-5 py-3.5">Hình thức (Loại)</th>
                 <th scope="col" className="px-5 py-3.5 text-center">Giá trị giảm</th>
@@ -401,9 +400,6 @@ export default function PromotionManagement({
 
                 return (
                   <tr key={p.id} className="hover:bg-gray-50/40 transition-colors">
-                    
-                    {/* ID */}
-                    <td className="px-5 py-3.5 font-bold font-mono text-gray-950">{p.id}</td>
 
                     {/* Name */}
                     <td className="px-5 py-3.5 text-gray-950 font-bold">{p.name}</td>
@@ -499,7 +495,7 @@ export default function PromotionManagement({
 
               {filteredPromotions.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center text-gray-400">
+                  <td colSpan={7} className="py-16 text-center text-gray-400">
                     <Tag className="w-8 h-8 text-gray-300 mx-auto stroke-1 mb-2 animate-bounce" />
                     <p className="text-xs font-bold">Không tìm thấy mã ưu đãi hợp lệ nào!</p>
                     <p className="text-[10px] text-gray-400 mt-1">Vui lòng mở rộng từ khóa tìm kiếm hoặc lọc thiết lập phân nhóm khác</p>
@@ -711,10 +707,10 @@ export default function PromotionManagement({
             {/* Form */}
             <form onSubmit={handleSaveEditPromoSubmit} className="p-5 space-y-4 font-medium">
               
-              <div className="p-3 bg-gray-50 rounded-lg flex justify-between items-center">
+              {/*<div className="p-3 bg-gray-50 rounded-lg flex justify-between items-center">
                 <span className="block text-[10px] text-gray-400 font-bold uppercase">Mã ưu đãi chiết khấu</span>
                 <span className="font-bold text-[#3B82F6] font-mono text-xs">{editingPromo.id}</span>
-              </div>
+              </div>*/}
 
               {/* Promotion Name */}
               <div className="space-y-1">

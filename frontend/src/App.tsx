@@ -527,7 +527,7 @@ export default function App() {
 			</form>
 
 			{/* Test Credentials Sandbox Portal */}
-			<div className="mt-8 pt-6 border-t border-gray-100">
+			{/*<div className="mt-8 pt-6 border-t border-gray-100">
 			  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2.5">
 				Cổng thử nghiệm vai trò (Sandbox Demo)
 			  </p>
@@ -540,12 +540,12 @@ export default function App() {
 				  Quản lý: <span className="text-[#3B82F6] font-bold font-mono">manager@test.com</span>
 				</button>
 			  </div>
-			</div>
+			</div>*/}
 
-			<div className="mt-6 text-center text-[10px] text-gray-400">
+			{/*<div className="mt-6 text-center text-[10px] text-gray-400">
 			  Thông tin đăng nhập được cấp bởi Trưởng phòng nhân sự.<br />
 			  Hỗ trợ kỹ thuật: <span className="font-semibold text-gray-500">admin@retailchain.vn</span>
-			</div>
+			</div>*/}
 		  </div>
 		</div>
 	  ) : (
@@ -730,7 +730,7 @@ export default function App() {
 				<div className="text-right hidden sm:block">
 				  <span className="block font-bold text-gray-900">{currentUser?.fullName || 'Nguyễn Văn A'}</span>
 				  <span className="block text-[10px] text-gray-400 font-medium font-mono">
-					{currentUser?.id || 'NV001'} &bull; {userRole || 'Quản lý'}
+					{userRole || 'Quản lý'}
 				  </span>
 				</div>
 				<div className="w-9 h-9 rounded-full bg-blue-100 text-[#3B82F6] flex items-center justify-center font-bold tracking-tight">

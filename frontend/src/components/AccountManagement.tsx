@@ -430,7 +430,6 @@ export default function AccountManagement({ stores: _stores }: AccountManagement
                         </div>
                         <div>
                           <span className="font-extrabold text-gray-950 block">{acc.fullName}</span>
-                          <span className="text-[10px] text-gray-400 font-mono font-bold">{acc.id.slice(0, 8)}…</span>
                         </div>
                       </div>
                     </td>
@@ -743,9 +742,6 @@ export default function AccountManagement({ stores: _stores }: AccountManagement
                   <span className="block text-[8px] text-gray-400 uppercase font-black">Địa chỉ Email (Không được đổi)</span>
                   <span className="font-semibold text-gray-800 font-mono">{editingAccount.email}</span>
                 </div>
-                <span className="font-extrabold text-[#3B82F6] font-mono text-[10px] bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md">
-                  {editingAccount.id.slice(0, 8)}…
-                </span>
               </div>
 
               {/* Họ tên */}

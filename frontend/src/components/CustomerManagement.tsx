@@ -364,7 +364,6 @@ export default function CustomerManagement({
           <table className="w-full text-left text-gray-600 border-collapse">
             <thead className="bg-gray-50 text-gray-500 uppercase tracking-widest text-[9px] font-bold border-b border-gray-100">
               <tr>
-                <th scope="col" className="px-5 py-3.5">Mã KH</th>
                 <th scope="col" className="px-5 py-3.5">Họ tên</th>
                 <th scope="col" className="px-5 py-3.5">Số điện thoại</th>
                 <th scope="col" className="px-5 py-3.5">Email</th>
@@ -390,9 +389,6 @@ export default function CustomerManagement({
 
                 return (
                   <tr key={c.id} className="hover:bg-gray-50/40 transition-colors">
-                    
-                    {/* KH ID */}
-                    <td className="px-5 py-3.5 font-bold font-mono text-gray-950">{c.id}</td>
                     
                     {/* Client Name */}
                     <td className="px-5 py-3.5 text-gray-950 font-bold">{c.name}</td>
@@ -465,7 +461,7 @@ export default function CustomerManagement({
 
               {filteredCustomers.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center text-gray-400">
+                  <td colSpan={7} className="py-16 text-center text-gray-400">
                     <User className="w-8 h-8 text-gray-300 mx-auto stroke-1 mb-2 animate-pulse" />
                     <p className="text-xs font-bold">Không tìm thấy khách hàng nào khớp kết quả tìm kiếm!</p>
                     <p className="text-[10px] text-gray-400 mt-1">Sử dụng họ tên hoàn chỉnh, mã định danh hoặc SDT khác</p>
@@ -617,10 +613,10 @@ export default function CustomerManagement({
             {/* Form */}
             <form onSubmit={handleSaveEditCustomerSubmit} className="p-5 space-y-4 font-medium">
               
-              <div className="p-3 bg-gray-50 rounded-lg flex justify-between items-center">
+              {/*<div className="p-3 bg-gray-50 rounded-lg flex justify-between items-center">
                 <span className="block text-[10px] text-gray-400 font-bold uppercase">Mã khách hàng</span>
                 <span className="font-bold text-[#3B82F6] font-mono text-xs">{editingCustomer.id}</span>
-              </div>
+              </div>*/}
 
               {/* Name */}
               <div className="space-y-1">
@@ -707,7 +703,6 @@ export default function CustomerManagement({
               <div>
                 <span className="block text-[9px] text-gray-400 uppercase font-black">Khách hàng</span>
                 <span className="font-extrabold text-gray-950 text-[13px] block mt-0.5">{selectedHistoryCust.name}</span>
-                <span className="text-[10px] text-gray-400 font-mono block">Mã: {selectedHistoryCust.id}</span>
               </div>
 
               <div>

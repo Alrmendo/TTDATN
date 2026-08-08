@@ -395,7 +395,6 @@ export default function DashboardOverview({ invoices: _invoices, products: _prod
           <table className="w-full text-left text-xs text-gray-600 border-collapse">
             <thead className="bg-gray-50 text-gray-500 uppercase tracking-wider text-[10px] font-semibold">
               <tr>
-                <th scope="col" className="px-5 py-3.5 border-b border-gray-100">Mã đơn</th>
                 <th scope="col" className="px-5 py-3.5 border-b border-gray-100">Chi nhánh</th>
                 <th scope="col" className="px-5 py-3.5 border-b border-gray-100">Nhân viên</th>
                 <th scope="col" className="px-5 py-3.5 border-b border-gray-100">Khách hàng</th>
@@ -406,7 +405,6 @@ export default function DashboardOverview({ invoices: _invoices, products: _prod
             <tbody className="divide-y divide-gray-100 font-medium">
               {recentInvoices.map((invoice) => (
                 <tr key={invoice.id} className="hover:bg-gray-50/70 transition">
-                  <td className="px-5 py-3.5 text-black font-bold font-mono text-[11px]">{invoice.id.slice(0, 8)}…</td>
                   <td className="px-5 py-3.5 text-gray-500">{invoice.store?.storeName ?? '—'}</td>
                   <td className="px-5 py-3.5 text-gray-800 flex items-center space-x-2">
                     <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 grid place-content-center text-[9px] font-bold uppercase">

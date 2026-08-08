@@ -277,7 +277,6 @@ export default function StoreManagement({ userRole }: StoreManagementProps) {
                   </div>
                   <div>
                     <h4 className="font-extrabold text-gray-950 text-sm tracking-tight">{store.storeName}</h4>
-                    <span className="text-[10px] text-gray-400 font-mono font-bold tracking-widest">{store.id}</span>
                   </div>
                 </div>
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -336,8 +335,7 @@ export default function StoreManagement({ userRole }: StoreManagementProps) {
             <table className="w-full text-left text-gray-600 border-collapse">
               <thead className="bg-gray-50 text-gray-500 uppercase tracking-widest text-[9px] font-bold border-b border-gray-100">
                 <tr>
-                  <th scope="col" className="px-5 py-3.5">Mã CN</th>
-                  <th scope="col" className="px-5 py-3.5">Tên chi nhánh</th>
+                    <th scope="col" className="px-5 py-3.5">Tên chi nhánh</th>
                   <th scope="col" className="px-5 py-3.5">Địa chỉ</th>
                   <th scope="col" className="px-5 py-3.5 text-center">Số nhân viên</th>
                   <th scope="col" className="px-5 py-3.5 text-center">Doanh thu tháng</th>
@@ -348,7 +346,6 @@ export default function StoreManagement({ userRole }: StoreManagementProps) {
               <tbody className="divide-y divide-gray-150/40 text-xs text-gray-750">
                 {currentItems.map((store) => (
                   <tr key={store.id} className="hover:bg-gray-50/40 transition-colors">
-                    <td className="px-5 py-3.5 font-bold font-mono text-gray-950">{store.id}</td>
                     <td className="px-5 py-3.5">
                       <div className="font-bold text-gray-950">{store.storeName}</div>
                       <div className="text-[10px] text-gray-400">QL: —</div>
@@ -408,7 +405,7 @@ export default function StoreManagement({ userRole }: StoreManagementProps) {
 
                 {filteredStores.length === 0 && !loading && (
                   <tr>
-                    <td colSpan={7} className="py-16 text-center text-gray-400">
+                    <td colSpan={6} className="py-16 text-center text-gray-400">
                       <StoreIcon className="w-8 h-8 text-gray-300 mx-auto stroke-1 mb-2 animate-bounce" />
                       <p className="text-xs font-bold">Không tìm thấy chi nhánh nào trùng khớp!</p>
                       <p className="text-[10px] text-gray-400 mt-1">Vui lòng kiểm tra từ khoá tìm kiếm</p>
@@ -539,11 +536,6 @@ export default function StoreManagement({ userRole }: StoreManagementProps) {
             </div>
 
             <form onSubmit={handleSaveEditStoreSubmit} className="p-5 space-y-4 font-medium">
-              <div className="p-3 bg-gray-50 rounded-lg flex justify-between items-center">
-                <span className="block text-[10px] text-gray-400 font-bold uppercase">Mã chi nhánh</span>
-                <span className="font-extrabold text-[#3B82F6] font-mono text-xs">{editingStore.id}</span>
-              </div>
-
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-gray-500 uppercase">Tên chi nhánh *</label>
                 <input
